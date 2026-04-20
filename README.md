@@ -78,6 +78,7 @@ A continuación se muestra el entorno de ejecución desconectado y el panel de c
 
 <img width="1909" height="919" alt="image" src="https://github.com/user-attachments/assets/8dafa01d-a524-4183-bfaa-1eee62128681" />
 
+<br><br><br>
 A continuación se muestra el entorno de ejecución desconectado y el panel de control del Sistema Operativo interactuando por Telnet:
 
 
