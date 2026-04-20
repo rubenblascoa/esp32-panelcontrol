@@ -57,13 +57,26 @@ Módulo de telemetría física utilizando el sensor de distancia **HC-SR04**.
 
 ## 📸 Interfaz y Telemetría
 
-A continuación se muestra el entorno de ejecución en vivo y el panel de control del Sistema Operativo interactuando por Telnet:
+A continuación se muestra el entorno de ejecución desconectado y el panel de control del Sistema Operativo interactuando por Telnet:
+
+<p><i>Panel de telemetría y ejecución en vivo: Versión Oscura</i></p>
 
 <img width="1920" height="582" alt="image" src="https://github.com/user-attachments/assets/c8f147e4-a81f-4320-8caf-17223d8ffc37" />
 
 <img width="1916" height="557" alt="image" src="https://github.com/user-attachments/assets/7f70a8a3-0af5-4ead-bf37-acfb4be0a017" />
 
 <img width="1920" height="913" alt="image" src="https://github.com/user-attachments/assets/4c7c79c2-b56f-42b1-a481-ccad7382f6b2" />
+
+<p><i>Panel de telemetría y ejecución en vivo: Versión Blanca</i></p>
+
+<img width="1907" height="595" alt="image" src="https://github.com/user-attachments/assets/7b1b0954-86f6-402e-9e74-5cb4805b160a" />
+
+<img width="1906" height="547" alt="image" src="https://github.com/user-attachments/assets/dbe4eba7-4d52-4cff-9aa6-c7855888b681" />
+
+<img width="1909" height="919" alt="image" src="https://github.com/user-attachments/assets/8dafa01d-a524-4183-bfaa-1eee62128681" />
+
+
+
 
 
 
