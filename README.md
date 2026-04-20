@@ -82,7 +82,7 @@ A continuación se muestra el entorno de ejecución desconectado y el panel de c
 
 ## 📸 Interfaz y Telemetría Activa
 
-A continuación se muestra el entorno de ejecución desconectado y el panel de control del Sistema Operativo interactuando por Telnet:
+A continuación se muestra el entorno de ejecución activado y el panel de control del Sistema Operativo interactuando por Telnet:
 
 <p><i>Panel de telemetría y ejecución en vivo: Versión Oscura</i></p>
 <br><br><br>
