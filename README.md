@@ -76,12 +76,17 @@ A continuación se muestra el entorno de ejecución desconectado y el panel de c
 
 <img width="1906" height="547" alt="image" src="https://github.com/user-attachments/assets/dbe4eba7-4d52-4cff-9aa6-c7855888b681" />
 
-<img width="1909" height="919" alt="image" src="https://github.com/user-attachments/assets/8dafa01d-a524-4183-bfaa-1eee62128681" />
+<img width="1904" height="912" alt="image" src="https://github.com/user-attachments/assets/b13a11c2-0409-4bc6-8c57-e63998465a93" />
 
-<br><br><br>
 ## 📸 Interfaz y Telemetría Activa
 
 A continuación se muestra el entorno de ejecución desconectado y el panel de control del Sistema Operativo interactuando por Telnet:
+
+<p><i>Panel de telemetría y ejecución en vivo: Versión Oscura</i></p>
+<br><br><br>
+
+
+<p><i>Panel de telemetría y ejecución en vivo: Versión Blanca</i></p>
 
 
 
