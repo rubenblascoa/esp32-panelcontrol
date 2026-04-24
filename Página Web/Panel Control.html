@@ -27,7 +27,7 @@ SOFTWARE. !>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZenithMC | Recursos ESP32</title>
-	<link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/8463/8463850.png">
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/8463/8463850.png">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
@@ -141,6 +141,12 @@ SOFTWARE. !>
         .progress-container { width: 100%; background: var(--border-color); height: 8px; border-radius: 10px; margin-top: 20px; overflow: hidden; }
         .progress-bar { width: 0%; height: 100%; background: var(--progress-fill); box-shadow: 0 0 15px var(--progress-fill); transition: width 0.3s ease, background 0.4s ease; }
 
+        /* BOTÓN BLANCO ENLACE A DB */
+        .btn-volver-blanco { background: transparent; color: #ffffff; border: 1px solid #ffffff; padding: 8px 20px; border-radius: 8px; font-weight: 800; text-decoration: none; font-size: 0.85rem; text-transform: uppercase; transition: 0.3s; margin-top: 10px; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-volver-blanco:hover { background: #ffffff; color: #000000; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4); transform: scale(1.05); }
+        body.light-theme .btn-volver-blanco { color: #111827; border-color: #111827; }
+        body.light-theme .btn-volver-blanco:hover { background: #111827; color: #ffffff; }
+
         /* TABLAS Y GRÁFICAS */
         .section-title { font-size: 1rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 25px; text-align: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; }
 
@@ -173,6 +179,66 @@ SOFTWARE. !>
         .btn-exe:hover { background: var(--text-main); transform: scale(1.05); }
         .btn-reset { background: rgba(255, 75, 75, 0.15); color: var(--crit); border: 1px solid var(--crit); }
         .btn-reset:hover { background: var(--crit); color: #fff; }
+
+        .nav-right {
+        justify-self: end;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        }
+
+        .user-profile img {
+        width: 18px; /* Reducido de 22px */
+        height: 18px;
+        border-radius: 50%;
+        filter: grayscale(1) opacity(0.7);
+        border: 1px solid var(--border-color);
+        }
+
+        .user-profile {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-muted);
+        font-weight: 800;
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        transition: 0.3s;
+        }
+
+        .user-profile:hover {
+        color: var(--text-main);
+        }
+
+        .btn-accion-logout {
+            background: transparent;
+            padding: 8px 18px;
+            border-radius: 10px;
+            font-weight: 900;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            transition: 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            border: 1px solid var(--crit); /* Color rojo de tu paleta */
+            color: var(--crit);
+            text-decoration: none;
+            letter-spacing: 1px;
+        }
+        .btn-accion-logout:hover {
+            background: var(--crit);
+            color: #fff;
+            box-shadow: 0 0 15px var(--crit);
+            transform: scale(1.05);
+        }
+        .btn-accion-logout svg {
+            width: 14px;
+            height: 14px;
+        }
+
 
         .modal-btns { display: flex; gap: 15px; justify-content: center; flex-direction: row; }
         .modal-btn { padding: 12px 35px; border-radius: 15px; font-weight: 900; cursor: pointer; transition: 0.3s; border: none; text-transform: uppercase; flex: 1; }
@@ -220,15 +286,21 @@ SOFTWARE. !>
     </div>
 
     <nav class="back-nav" id="main-nav">
-        <a href="https://github.com/rubenblascoa/esp32-panelcontrol" target="_blank" class="btn-back" style="color: var(--text-main); opacity: 0.7; display: flex; align-items: center; gap: 8px; transition: 0.3s;" onmouseover="this.style.opacity='1'; this.style.color='var(--accent)'" onmouseout="this.style.opacity='0.7'; this.style.color='var(--text-main)'">
-			      <div style="width: 22px; height: 22px; background-color: currentColor; -webkit-mask: url('https://icones.pro/wp-content/uploads/2021/06/icone-github-grise.png') center/contain no-repeat; mask: url('https://icones.pro/wp-content/uploads/2021/06/icone-github-grise.png') center/contain no-repeat;"></div> GITHUB
-		    </a>
-        
-        <div id="nav-status">
-            <div class="header-badge badge-offline" id="status-badge-nav">Conectando...</div>
+        <div class="nav-left">
+            <a href="https://github.com/rubenblascoa/esp32-panelcontrol" target="_blank" class="btn-back" style="color: var(--text-main); opacity: 0.7; display: flex; align-items: center; gap: 8px; transition: 0.3s;" onmouseover="this.style.opacity='1'; this.style.color='var(--accent)'" onmouseout="this.style.opacity='0.7'; this.style.color='var(--text-main)'">
+                  <div style="width: 22px; height: 22px; background-color: currentColor; -webkit-mask: url('https://icones.pro/wp-content/uploads/2021/06/icone-github-grise.png') center/contain no-repeat; mask: url('https://icones.pro/wp-content/uploads/2021/06/icone-github-grise.png') center/contain no-repeat;"></div> GITHUB
+            </a>
         </div>
-
-        <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Cambiar Tema"><i data-lucide="sun"></i></button>
+        <div id="nav-status"><div class="header-badge badge-connecting" id="status-badge-nav">CONECTANDO...</div></div>
+        <div class="nav-right">
+            <div class="user-profile">
+                <i data-lucide="circle-user"></i>
+                <span>admin</span>
+            </div>
+            <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Cambiar Tema">
+                <i data-lucide="sun"></i>
+            </button>
+        </div>
     </nav>
 
     <div class="master-wrap">
@@ -241,6 +313,8 @@ SOFTWARE. !>
             </div>
             
             <p class="header-subtitle">Panel de Control Multimódulo</p>
+
+            <a href="/db" class="btn-volver-blanco"><i data-lucide="database" style="width: 16px; height: 16px;"></i> VER BASE DE DATOS</a>
         </div>
         
         <section>
@@ -263,7 +337,7 @@ SOFTWARE. !>
         </section>
 
         <section>
-            <div class="section-title">Consola de Control Directa (192.168.18.192)</div>
+            <div class="section-title">Consola de Control Directa (192.168.18.203)</div>
             <div class="cmd-terminal">
                 <div class="cmd-header">ZENITH_BLASCO // CONEXIÓN EN DIRECTO</div>
                 <div id="logs"></div>
@@ -280,9 +354,33 @@ SOFTWARE. !>
     <footer class="footer-zenith">
         <p>© 2024 ZenithMC Network. Todos los derechos reservados.</p>
         <p><a href="mailto:soporte@zenithmc.es">soporte@zenithmc.es</a></p>
+        <div style="margin-top: 20px;">
+            <a href="/logout" class="btn-accion-logout">
+                <i data-lucide="log-out"></i> CERRAR SESIÓN
+            </a>
+        </div>
     </footer>
 
 <script>
+
+// --- GUARDIA DE SESIÓN DE PESTAÑA ---
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    
+    // Si venimos del login exitoso, marcamos esta pestaña como autorizada
+    if (params.get('auth') === 'true') {
+        sessionStorage.setItem('zenith_active', '1');
+        // Limpiamos la URL para que no se vea el ?auth=true
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // Si no hay marca en sessionStorage, significa que la pestaña se acaba de abrir/reabrir
+    // Forzamos el logout para limpiar cookies persistentes del navegador
+    if (!sessionStorage.getItem('zenith_active')) {
+        window.location.href = '/logout';
+    }
+})();
+
 lucide.createIcons();
 
 // LOGICA DE LA BARRA ADHESIVA AL HACER SCROLL
@@ -340,7 +438,7 @@ const chart = new Chart(ctx, {
                 padding: 12,
                 callbacks: {
                     title: function(tooltipItems) {
-                        return 'Hora exacta: ' + tooltipItems[0].label;
+                        return 'Tiempo Activo: ' + tooltipItems[0].label;
                     }
                 }
             }
@@ -359,7 +457,6 @@ async function startReset() {
     document.getElementById('confirmModal').style.display = 'none';
     document.getElementById('loadingModal').style.display = 'flex';
     document.getElementById('pbar').style.width = '20%';
-    
     if(websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send("reboot");
     }
@@ -392,6 +489,7 @@ function setStatusBadge(status) {
     const badgeNav = document.getElementById('status-badge-nav');
     
     const update = (el) => {
+        if(!el) return;
         if (status === 'online') {
             el.className = 'header-badge badge-online';
             el.innerText = 'ONLINE';
@@ -408,7 +506,7 @@ function setStatusBadge(status) {
     update(badgeNav);
 }
 
-let gateway = `ws://192.168.18.192/ws`;
+let gateway = `ws://${window.location.hostname}/ws`;
 let websocket;
 
 function initWebSocket() {
@@ -427,7 +525,7 @@ function onOpen(event) {
 function onClose(event) {
     setStatusBadge('offline');
     document.getElementById('logs').innerHTML += `<span style="color:var(--crit)">[SISTEMA] Conexión perdida. Reconectando en breve...</span>\n`;
-    setTimeout(initWebSocket, 3000); 
+    setTimeout(initWebSocket, 3000);
 }
 
 function onMessage(event) {
@@ -435,7 +533,7 @@ function onMessage(event) {
         let d = JSON.parse(event.data);
         if(d.type === 'telemetry') {
             actualizarDashboard(d);
-            return; 
+            return;
         }
     } catch(e) {}
     
@@ -444,9 +542,41 @@ function onMessage(event) {
     logs.scrollTop = logs.scrollHeight;
 }
 
+// -------------------------------------------------------------
+// LÓGICA DE CARGA DE HISTORIAL (LittleFS)
+// -------------------------------------------------------------
+function cargarHistorialGrafica() {
+    fetch('/datos.csv')
+        .then(response => {
+            if (!response.ok) throw new Error("Sin datos previos");
+            return response.text();
+        })
+        .then(textoCSV => {
+            const filas = textoCSV.split('\n');
+            
+            // Leemos de más antiguo a más nuevo
+            for(let i = 0; i < filas.length; i++) {
+                if(filas[i].trim() !== '') {
+                    const cols = filas[i].split(',');
+                    if(cols.length < 8) continue; // Filtro de seguridad
+                    
+                    chart.data.labels.push(cols[0]); // Uptime
+                    chart.data.datasets[0].data.push(parseFloat(cols[1])); // Temp
+                    chart.data.datasets[1].data.push(parseInt(cols[2]));   // CPU
+                    chart.data.datasets[2].data.push(parseInt(cols[3]));   // C0
+                    chart.data.datasets[3].data.push(parseInt(cols[4]));   // C1
+                    chart.data.datasets[4].data.push(parseFloat(cols[5])); // RAM
+                    chart.data.datasets[5].data.push(parseFloat(cols[6])); // Flash
+                    chart.data.datasets[6].data.push(parseInt(cols[7]));   // WiFi
+                }
+            }
+            chart.update();
+        })
+        .catch(err => console.log("Historial no cargado:", err));
+}
+
 function actualizarDashboard(d) {
     let wifiQ = Math.min(Math.max(2 * (d.wifi + 100), 0), 100);
-    
     const map = { 'v-t': d.temp+'°', 'v-c':d.cpu+'%', 'v-c0':d.c0+'%', 'v-c1':d.c1+'%', 'v-r':d.ram+'%', 'v-f':d.flash+'%', 'v-w':wifiQ+'%', 'v-u':d.uptime };
     for(let id in map) { let el = document.getElementById(id); if(el) el.innerText = map[id]; }
 
@@ -459,21 +589,20 @@ function actualizarDashboard(d) {
         if(barEl) {
             barEl.style.width = val + '%';
             barEl.style.backgroundColor = color;
-            barEl.style.boxShadow = `0 0 12px ${color}, 0 0 4px ${color}`; 
+            barEl.style.boxShadow = `0 0 12px ${color}, 0 0 4px ${color}`;
         }
         let iconEl = document.getElementById('i-' + key);
         if(iconEl) iconEl.style.color = color;
     }
-
-	const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
     
-    // Histórico ampliado a 2000 puntos (aprox. 3 horas de datos)
+    // Límite de seguridad en RAM (2000 puntos guardados en la gráfica)
     if(chart.data.labels.length > 2000) { 
-        chart.data.labels.shift(); 
+        chart.data.labels.shift();
         chart.data.datasets.forEach(s => s.data.shift()); 
     }
     
-    chart.data.labels.push(now);
+    // Dibuja el nuevo punto sincronizado con Uptime
+    chart.data.labels.push(d.uptime);
     chart.data.datasets[0].data.push(d.temp);
     chart.data.datasets[1].data.push(d.cpu);
     chart.data.datasets[2].data.push(d.c0);
@@ -482,10 +611,7 @@ function actualizarDashboard(d) {
     chart.data.datasets[5].data.push(d.flash);
     chart.data.datasets[6].data.push(wifiQ);
     chart.update('none');
-	
-	}
-
-window.addEventListener('load', initWebSocket);
+}
 
 function exe(e) {
     e.preventDefault();
@@ -493,7 +619,6 @@ function exe(e) {
     if(!i.value) return;
     
     document.getElementById('logs').innerHTML += `<span style="color:var(--accent)">esp32@blasco:~$</span> ${i.value}\n`;
-    
     if(websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send(i.value);
     }
@@ -501,6 +626,22 @@ function exe(e) {
     i.value = "";
     document.getElementById('logs').scrollTop = 99999;
 }
+
+// ARRANQUE DOBLE: Cargar historial de Flash y enganchar WebSocket en vivo
+window.addEventListener('load', async () => {
+    // 1. Los círculos ya cargan por defecto al abrir el HTML.
+
+    // 2. Cargamos el historial de la gráfica tras un breve respiro (500ms)
+    setTimeout(() => {
+        cargarHistorialGrafica(); 
+    }, 500);
+
+    // 3. Iniciamos el WebSocket (Telnet y Telemetría en vivo) al final (1.5 segundos)
+    // Esto asegura que la gráfica antigua ya esté pintada antes de recibir datos nuevos.
+    setTimeout(() => {
+        initWebSocket();
+    }, 1500);
+});
 </script>
 </body>
 </html>
