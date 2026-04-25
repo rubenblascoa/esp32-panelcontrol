@@ -50,8 +50,8 @@ Módulo de telemetría física utilizando el sensor de distancia **HC-SR04**.
 1. Configura tus credenciales Wi-Fi (`ssid` y `password`) en el código fuente.
 2. Flashea el código por USB la primera vez mediante Arduino IDE.
 3. Abre la consola Serial a `115200 baudios` para descubrir la IP local asignada.
-4. Abre la terminal de tu PC (o PuTTY) y conéctate: `telnet [IP_DEL_ESP32]`.
-5. ¡Disfruta del entorno! Navega usando las teclas `1`, `2`, `M`, `N` o `U`.
+4. Abre el navegador y busca dicha ip local.
+5. ¡Disfruta del entorno!.
 
 ---
 ### ⚙️ Configuración de Compilación (Arduino IDE)
