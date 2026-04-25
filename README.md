@@ -54,41 +54,81 @@ Módulo de telemetría física utilizando el sensor de distancia **HC-SR04**.
 5. ¡Disfruta del entorno! Navega usando las teclas `1`, `2`, `M`, `N` o `U`.
 
 ---
+### ⚙️ Configuración de Compilación (Arduino IDE)
 
-## 📸 Interfaz y Telemetría Desconectada
+Para que el proyecto compile correctamente y el panel web tenga espacio suficiente para la base de datos (LittleFS), es **obligatorio** usar la siguiente configuración en el menú **Herramientas (Tools)** de Arduino IDE. 
 
-A continuación se muestra el entorno de ejecución desconectado y el panel de control del Sistema Operativo interactuando por Telnet:
+Esta configuración está optimizada para placas **ESP32-S3 (N16R8)** con 16MB de Flash y 8MB de PSRAM.
+
+| Parámetro de Configuración | Valor Exacto Requerido |
+| :--- | :--- |
+| **Placa (Board)** | `ESP32S3 Dev Module` |
+| **USB CDC On Boot** | `Enabled` |
+| **CPU Frequency** | `240MHz (WiFi)` |
+| **Core Debug Level** | `None` |
+| **USB DFU On Boot** | `Disabled` |
+| **Erase All Flash Before Sketch Upload** | `Disabled` |
+| **Events Run On** | `Core 1` |
+| **Flash Mode** | `DIO 80MHz` |
+| **Flash Size** | `16MB (128Mb)` |
+| **JTAG Adapter** | `Disabled` |
+| **Arduino Runs On** | `Core 1` |
+| **USB Firmware MSC On Boot** | `Disabled` |
+| **Partition Scheme** | `16M Flash (3MB APP/9.9MB FATFS)` ⚠️ |
+| **PSRAM** | `OPI PSRAM` ⚠️ |
+| **Upload Mode** | `UART0 / Hardware CDC` |
+| **Upload Speed** | `921600` |
+| **USB Mode** | `Hardware CDC and JTAG` |
+| **Zigbee Mode** | `Disabled` |
+
+> ⚠️ **IMPORTANTE:** > * **Partition Scheme:** Es vital seleccionar la partición `9.9MB FATFS`. Esto reserva casi 10MB de memoria exclusivamente para el sistema de archivos (LittleFS) donde se alojan el historial de telemetría y los archivos `.csv`.
+> * **PSRAM:** Asegúrate de marcar `OPI PSRAM` para desbloquear los 8MB de memoria RAM externa de la placa, necesarios para manejar los buffers del servidor web asíncrono sin cuelgues.
+
+
+
+---
+## 📸 Interfaz y Telemetría Panel Control
+
+A continuación se muestra el entorno de ejecución de el panel de control del Sistema Operativo:
 
 <p><i>Panel de telemetría y ejecución en vivo: Versión Oscura</i></p>
+<img width="1911" height="638" alt="image" src="https://github.com/user-attachments/assets/db980fe4-600b-43e1-b8bb-b9c366eb26ee" />
+<img width="1917" height="541" alt="image" src="https://github.com/user-attachments/assets/eef43556-0c27-49e9-8d07-eda9577c5c75" />
+<img width="1910" height="905" alt="image" src="https://github.com/user-attachments/assets/4f032878-b0b0-406b-81f2-786c12560149" />
 
 
-<img width="1920" height="582" alt="image" src="https://github.com/user-attachments/assets/c8f147e4-a81f-4320-8caf-17223d8ffc37" />
-
-<img width="1916" height="557" alt="image" src="https://github.com/user-attachments/assets/7f70a8a3-0af5-4ead-bf37-acfb4be0a017" />
-
-<img width="1920" height="913" alt="image" src="https://github.com/user-attachments/assets/4c7c79c2-b56f-42b1-a481-ccad7382f6b2" />
 <br><br><br>
 <p><i>Panel de telemetría y ejecución en vivo: Versión Blanca</i></p>
-
-
-
-<img width="1907" height="595" alt="image" src="https://github.com/user-attachments/assets/7b1b0954-86f6-402e-9e74-5cb4805b160a" />
-
-<img width="1906" height="547" alt="image" src="https://github.com/user-attachments/assets/dbe4eba7-4d52-4cff-9aa6-c7855888b681" />
-
-<img width="1904" height="912" alt="image" src="https://github.com/user-attachments/assets/b13a11c2-0409-4bc6-8c57-e63998465a93" />
+<img width="1909" height="628" alt="image" src="https://github.com/user-attachments/assets/55b18cca-1077-499a-81ed-d8acf6d66cc4" />
+<img width="1890" height="551" alt="image" src="https://github.com/user-attachments/assets/6c5cba54-ecff-498f-835e-130887f2bf8b" />
+<img width="1858" height="910" alt="image" src="https://github.com/user-attachments/assets/bbca1743-3a4e-4fa7-9f1b-6b4601bce200" />
 
 ---
 
-## 📸 Interfaz y Telemetría Activa
+## 📸 Interfaz y Telemetría Base de Datos
 
-A continuación se muestra el entorno de ejecución activado y el panel de control del Sistema Operativo interactuando por Telnet:
+A continuación se muestra el entorno de ejecución de las bases de datos del Sistema Operativo:
 
 <p><i>Panel de telemetría y ejecución en vivo: Versión Oscura</i></p>
+<img width="1906" height="907" alt="image" src="https://github.com/user-attachments/assets/9eb98e35-184f-4a02-a418-f3e88d0f6121" />
+
+
 <br><br><br>
-
-
 <p><i>Panel de telemetría y ejecución en vivo: Versión Blanca</i></p>
+<img width="1900" height="902" alt="image" src="https://github.com/user-attachments/assets/2304afdb-c12e-40c0-8ad8-01674a1acfa1" />
+
+---
+## 📸 Interfaz y Telemetría Login
+
+A continuación se muestra el entorno de ejecución de el login del Sistema Operativo:
+
+<p><i>Panel de telemetría y ejecución en vivo: Versión Oscura</i></p>
+<img width="1914" height="904" alt="image" src="https://github.com/user-attachments/assets/be11690f-6344-40b0-aa56-73fbde6f885b" />
+
+
+<br><br><br>
+<p><i>Panel de telemetría y ejecución en vivo: Versión Blanca</i></p>
+<img width="1906" height="910" alt="image" src="https://github.com/user-attachments/assets/72f2c465-19c3-456b-9e2b-9e858a1d2273" />
 
 
 
