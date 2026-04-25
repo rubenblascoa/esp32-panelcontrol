@@ -1697,7 +1697,6 @@ void taskCore0(void * pvParameters) {
           }
       }
   }
-  // ====================================================================
 
 
   iniciarServidorWeb();
