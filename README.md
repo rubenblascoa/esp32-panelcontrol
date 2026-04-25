@@ -58,9 +58,9 @@ Módulo de telemetría física utilizando el sensor de distancia **HC-SR04**.
 
 Para que el proyecto compile correctamente y el panel web tenga espacio suficiente para la base de datos (LittleFS), es **obligatorio** usar la siguiente configuración en el menú **Herramientas (Tools)** de Arduino IDE. 
 
-Esta configuración está optimizada para placas **ESP32-S3 (N16R8)** con 16MB de Flash y 8MB de PSRAM.
+Además, el usuario y contraseña establecidos son **admin/blasco**. Dicha combinación es modificable en el archivo arduino.
 
-Además, el usuario y contraseña establecidos son admin/blasco. Dicha combinación es modificable en el archivo arduino.
+Esta configuración está optimizada para placas **ESP32-S3 (N16R8)** con 16MB de Flash y 8MB de PSRAM.
 
 | Parámetro de Configuración | Valor Exacto Requerido |
 | :--- | :--- |
