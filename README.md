@@ -112,12 +112,12 @@ A continuación se muestra el entorno de ejecución de el panel de control del S
 A continuación se muestra el entorno de ejecución de las bases de datos del Sistema Operativo:
 
 <p><i>Panel de telemetría y ejecución en vivo: Versión Oscura</i></p>
-<img width="1906" height="907" alt="image" src="https://github.com/user-attachments/assets/9eb98e35-184f-4a02-a418-f3e88d0f6121" />
+<img width="1880" height="910" alt="image" src="https://github.com/user-attachments/assets/15c40684-d907-4bca-9387-72960a42e2ad" />
 
 
 <br><br><br>
 <p><i>Panel de telemetría y ejecución en vivo: Versión Blanca</i></p>
-<img width="1900" height="902" alt="image" src="https://github.com/user-attachments/assets/2304afdb-c12e-40c0-8ad8-01674a1acfa1" />
+<img width="1884" height="912" alt="image" src="https://github.com/user-attachments/assets/59ef1539-4c79-4654-aa02-3c0c15b51490" />
 
 ---
 ## 📸 Interfaz y Telemetría Login
