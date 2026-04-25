@@ -35,11 +35,18 @@
 #include <MFRC522.h>              // Controlador del módulo lector NFC/RFID
 #include "time.h"                 // Gestión del reloj y cálculo de tiempos (Uptime)
 
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Configuración para ESP32-S3 N16R8
+// SDA -> GPIO 8 | SCL -> GPIO 9
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
 // ============================================================================
 // 1. CONFIGURACIÓN Y PINES
 // ============================================================================
-const char* ssid = "";     // Credenciales de la red local
-const char* password = "";
+const char* ssid = "NETLLAR_BLASCO";     // Credenciales de la red local
+const char* password = "978830522ro_";
 
 #define LED_PIN   48               // Pin del LED de estado de la placa base
 #define NUMPIXELS       1  // Solo hay un LED en la placa
@@ -71,6 +78,8 @@ const int MAX_WEBSOCKET_CLIENTS = 2; // Protección contra desbordamiento de mem
 bool permitirWebLog = false;         // Llave que deja pasar el texto a la web
 unsigned long tiempoInicioWeb = 0;   // Cronómetro de los 30 segundos
 bool sistemaListo = false;
+
+bool forzarTelemetria = false; // <--- 1. NUESTRO INTERRUPTOR GLOBAL
 
 // Variable global para almacenar el token de sesión activa
 String tokenSesionActiva = ""; 
@@ -154,8 +163,10 @@ unsigned long tiempoUltimoMenuPrincipal = 0; // Registros temporales para gesti�
 unsigned long previousMillisLED = 0;
 unsigned long tiempoUltimaMedicion = 0;
 unsigned long tiempoUltimoMenuNFC = 0;
-const unsigned long intervaloMenu = 60000;   // Umbral de inactividad (30s) para repintado automático de interfaz
+const unsigned long intervaloMenu = 300000;   // Umbral de inactividad (30s) para repintado automático de interfaz
 const unsigned long intervaloMedicion = 1000;// Frecuencia de muestreo (1Hz) del sensor de distancia
+
+SemaphoreHandle_t i2cMutex;
 
 // ============================================================================
 // PANEL WEB INCRUSTADO EN MEMORIA FLASH (PROGMEM)
@@ -685,34 +696,92 @@ function onMessage(event) {
 // -------------------------------------------------------------
 // LÓGICA DE CARGA DE HISTORIAL (LittleFS)
 // -------------------------------------------------------------
-function cargarHistorialGrafica() {
-    fetch('/datos.csv')
-        .then(response => {
-            if (!response.ok) throw new Error("Sin datos previos");
-            return response.text();
-        })
-        .then(textoCSV => {
-            const filas = textoCSV.split('\n');
-            
-            // Leemos de más antiguo a más nuevo
-            for(let i = 0; i < filas.length; i++) {
-                if(filas[i].trim() !== '') {
-                    const cols = filas[i].split(',');
-                    if(cols.length < 8) continue; // Filtro de seguridad
-                    
-                    chart.data.labels.push(cols[0]); // Uptime
-                    chart.data.datasets[0].data.push(parseFloat(cols[1])); // Temp
-                    chart.data.datasets[1].data.push(parseInt(cols[2]));   // CPU
-                    chart.data.datasets[2].data.push(parseInt(cols[3]));   // C0
-                    chart.data.datasets[3].data.push(parseInt(cols[4]));   // C1
-                    chart.data.datasets[4].data.push(parseFloat(cols[5])); // RAM
-                    chart.data.datasets[5].data.push(parseFloat(cols[6])); // Flash
-                    chart.data.datasets[6].data.push(parseInt(cols[7]));   // WiFi
-                }
+// -------------------------------------------------------------
+// LÓGICA DE CARGA DE HISTORIAL (LittleFS)
+// -------------------------------------------------------------
+// -------------------------------------------------------------
+// LÓGICA DE CARGA DE HISTORIAL (LittleFS) Y CÍRCULOS INSTANTÁNEOS
+// -------------------------------------------------------------
+async function cargarHistorialGrafica() {
+    try {
+        const response = await fetch('/datos.csv');
+        if (!response.ok) throw new Error("Sin datos previos");
+        
+        const textoCSV = await response.text();
+        const filas = textoCSV.split('\n');
+        
+        let ultimaFila = null;
+
+        // 1. DIBUJAMOS LA GRÁFICA DE MÁS ANTIGUO A MÁS NUEVO
+        for(let i = 0; i < filas.length; i++) {
+            if(filas[i].trim() !== '') {
+                const cols = filas[i].split(',');
+                if(cols.length < 8) continue; 
+                
+                chart.data.labels.push(cols[0]); 
+                chart.data.datasets[0].data.push(parseFloat(cols[1])); 
+                chart.data.datasets[1].data.push(parseInt(cols[2]));  
+                chart.data.datasets[2].data.push(parseInt(cols[3])); 
+                chart.data.datasets[3].data.push(parseInt(cols[4])); 
+                chart.data.datasets[4].data.push(parseFloat(cols[5])); 
+                chart.data.datasets[5].data.push(parseFloat(cols[6])); 
+                chart.data.datasets[6].data.push(parseInt(cols[7])); 
+
+                ultimaFila = cols; // Nos guardamos la última fila válida procesada
             }
-            chart.update();
-        })
-        .catch(err => console.log("Historial no cargado:", err));
+        }
+        chart.update();
+
+        // 2. TRUCO: RELLENAR CÍRCULOS AL INSTANTE CON EL ÚLTIMO REGISTRO
+        if (ultimaFila) {
+            let wifiCSV = parseInt(ultimaFila[7]);
+            
+            // Actualizar Textos
+            const map = { 
+                'v-t': parseFloat(ultimaFila[1])+'°', 
+                'v-c': parseInt(ultimaFila[2])+'%', 
+                'v-c0': parseInt(ultimaFila[3])+'%', 
+                'v-c1': parseInt(ultimaFila[4])+'%', 
+                'v-r': parseFloat(ultimaFila[5])+'%', 
+                'v-f': parseFloat(ultimaFila[6])+'%', 
+                'v-w': wifiCSV+'%', 
+                'v-u': ultimaFila[0] 
+            };
+            for(let id in map) { 
+                let el = document.getElementById(id); 
+                if(el) el.innerText = map[id]; 
+            }
+
+            // Actualizar Barras y Colores
+            const barValues = { 
+                't': parseFloat(ultimaFila[1]), 
+                'c': parseInt(ultimaFila[2]), 
+                'c0': parseInt(ultimaFila[3]), 
+                'c1': parseInt(ultimaFila[4]), 
+                'r': parseFloat(ultimaFila[5]), 
+                'f': parseFloat(ultimaFila[6]), 
+                'w': wifiCSV 
+            };
+            for(let key in barValues) {
+                let val = barValues[key];
+                let type = key === 't' ? 'temp' : (key === 'w' ? 'wifi' : 'perc');
+                let color = getColor(val, type);
+                
+                let barEl = document.getElementById('bar-' + key);
+                if(barEl) {
+                    barEl.style.width = val + '%';
+                    barEl.style.backgroundColor = color;
+                    barEl.style.boxShadow = `0 0 12px ${color}, 0 0 4px ${color}`;
+                }
+                
+                let iconEl = document.getElementById('i-' + key);
+                if(iconEl) iconEl.style.color = color;
+            }
+        }
+
+    } catch (err) {
+        console.log("Historial no cargado:", err);
+    }
 }
 
 function actualizarDashboard(d) {
@@ -735,13 +804,11 @@ function actualizarDashboard(d) {
         if(iconEl) iconEl.style.color = color;
     }
     
-    // Límite de seguridad en RAM (2000 puntos guardados en la gráfica)
     if(chart.data.labels.length > 2000) { 
         chart.data.labels.shift();
         chart.data.datasets.forEach(s => s.data.shift()); 
     }
     
-    // Dibuja el nuevo punto sincronizado con Uptime
     chart.data.labels.push(d.uptime);
     chart.data.datasets[0].data.push(d.temp);
     chart.data.datasets[1].data.push(d.cpu);
@@ -767,20 +834,15 @@ function exe(e) {
     document.getElementById('logs').scrollTop = 99999;
 }
 
-// ARRANQUE DOBLE: Cargar historial de Flash y enganchar WebSocket en vivo
+// ARRANQUE EN CASCADA ESTRICTO
 window.addEventListener('load', async () => {
     // 1. Los círculos ya cargan por defecto al abrir el HTML.
 
-    // 2. Cargamos el historial de la gráfica tras un breve respiro (500ms)
-    setTimeout(() => {
-        cargarHistorialGrafica(); 
-    }, 500);
+    // 2. Obligamos a que la web se espere a que termine de dibujar la gráfica
+    await cargarHistorialGrafica(); 
 
-    // 3. Iniciamos el WebSocket (Telnet y Telemetría en vivo) al final (1.5 segundos)
-    // Esto asegura que la gráfica antigua ya esté pintada antes de recibir datos nuevos.
-    setTimeout(() => {
-        initWebSocket();
-    }, 1500);
+    // 3. SOLO cuando la gráfica ha terminado, encendemos el Telnet en vivo
+    initWebSocket();
 });
 </script>
 </body>
@@ -1572,13 +1634,16 @@ long medirDistanciaFisica();
 // 4. EVENTOS Y FUNCIONES WEB
 // ============================================================================
 void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) { 
-  if (type == WS_EVT_CONNECT) {   // Manejador de negociación inicial (Handshake)
-    if (ws->count() > MAX_WEBSOCKET_CLIENTS) { // Control de concurrencia y protección de recursos
-        client->close();          
+  if (type == WS_EVT_CONNECT) {   
+    if (ws->count() > MAX_WEBSOCKET_CLIENTS) { 
+        client->close();
         return;
     }
+    permitirWebLog = true; // <--- AÑADIMOS ESTO: Abrimos el texto al instante
     Terminal.println("\n[SISTEMA] Dispositivo conectado al SO Blasco mediante Web-Telnet.");
     mostrarMenuPrincipal();
+    
+    forzarTelemetria = true; // <--- 2. ¡ENCENDEMOS EL INTERRUPTOR NADA MÁS ENTRAR!
   } else if (type == WS_EVT_DATA) { // Manejador de recepción de tramas de datos
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) { // Validación de trama de texto única y completa
@@ -1593,12 +1658,11 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
 
 void iniciarServidorWeb() {       
   
-  // 1. RUTA DE LOGIN (FORMULARIO)
+  // LOGIN Y LOGOUT
   server->on("/login-page", HTTP_GET, [](AsyncWebServerRequest *request){ 
     request->send_P(200, "text/html", login_html); 
   });
 
-  // 2. PROCESO DE LOGIN (CON REDIRECCIÓN ESPECIAL)
   server->on("/login", HTTP_POST, [](AsyncWebServerRequest *request){
       String u = "", p = "";
       if(request->hasParam("user", true)) u = request->getParam("user", true)->value();
@@ -1607,8 +1671,6 @@ void iniciarServidorWeb() {
       if(u == "admin" && p == "blasco") {
           tokenSesionActiva = String(random(100000, 999999)) + String(millis());
           AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", "");
-          
-          // Redirigimos con un parámetro especial '?auth=true'
           response->addHeader("Location", "/?auth=true");
           response->addHeader("Set-Cookie", "ZENITH_SESSION=" + tokenSesionActiva + "; Path=/; HttpOnly; SameSite=Strict"); 
           request->send(response);
@@ -1617,7 +1679,6 @@ void iniciarServidorWeb() {
       }
   });
 
-  // 3. RUTA DE LOGOUT (LIMPIEZA TOTAL)
   server->on("/logout", HTTP_GET, [](AsyncWebServerRequest *request){
       tokenSesionActiva = "";
       AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", "");
@@ -1626,7 +1687,7 @@ void iniciarServidorWeb() {
       request->send(response);
   });
 
-  // 4. RUTAS PROTEGIDAS
+  // RUTAS HTML PROTEGIDAS
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request){ 
     if(!estaLogueado(request)) { request->redirect("/login-page"); return; }
     request->send_P(200, "text/html", index_html); 
@@ -1637,7 +1698,25 @@ void iniciarServidorWeb() {
     request->send_P(200, "text/html", db_html); 
   });
 
-  // WebSocket y arranque
+  // =========================================================
+  // LAS RUTAS DE LA BASE DE DATOS QUE FALTABAN EN TU CÓDIGO
+  // =========================================================
+  server->on("/datos.csv", HTTP_GET, [](AsyncWebServerRequest *request){ 
+    if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; }
+    request->send(LittleFS, "/datos.csv", "text/csv"); 
+  });
+
+  server->on("/delete-db", HTTP_GET, [](AsyncWebServerRequest *request){
+      if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; }
+      if (LittleFS.exists("/datos.csv")) {
+          LittleFS.remove("/datos.csv");
+          Serial.println("🧹 [SISTEMA] Base de datos borrada desde la web.");
+          request->send(200, "text/plain", "OK");
+      } else {
+          request->send(404, "text/plain", "Archivo no encontrado");
+      }
+  });
+
   ws->onEvent(onWsEvent);         
   server->addHandler(ws);         
   server->begin();
@@ -1648,8 +1727,6 @@ void guardarEnHistorial() {
     if (!file) return;
 
     String fechaHora = obtenerFechaHora();
-
-    String uptime = obtenerFechaHora();
     float temp = temperatureRead();
     int cpu = random(8, 15);
     int c0 = 10;
@@ -1661,17 +1738,76 @@ void guardarEnHistorial() {
     float flashTotal = LittleFS.totalBytes();
     float flashUsado = LittleFS.usedBytes();
     float flash = (flashTotal > 0) ? round(((flashUsado * 100.0) / flashTotal) * 100.0) / 100.0 : 0.0;
+    
     int wifi = min(max(2 * (WiFi.RSSI() + 100), 0), 100);
 
     file.printf("%s,%.1f,%d,%d,%d,%.1f,%.1f,%d\n", fechaHora.c_str(), temp, cpu, c0, c1, ramUsada, flash, wifi);    
     file.close();
+    Serial.println("💾 [SISTEMA] Registro guardado en Flash (30 mins).");
 }
+
+void actualizarLCD() {
+  if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100))) {
+
+    uint32_t ramTotal = ESP.getPsramSize() > 0 ? ESP.getPsramSize() : ESP.getHeapSize();
+    int ramUsada = (ESP.getFreePsram() > 0) ? 100 - (ESP.getFreePsram() * 100 / ramTotal) : 100 - (ESP.getFreeHeap() * 100 / ESP.getHeapSize());
+    int wifiQ    = min(max(2 * (WiFi.RSSI() + 100), 0), 100);
+    int cpu      = random(8, 15);
+    int temp     = (int)temperatureRead();
+    float flashTotal = LittleFS.totalBytes();
+    float flashUsado = LittleFS.usedBytes();
+    float flash = (flashTotal > 0) ? (flashUsado * 100.0 / flashTotal) : 0.0;
+    int c0       = 10;
+    int c1       = (programaActivo == 0) ? 2 : 75;
+    String uptime = obtenerUptime();
+
+    static int pantalla = 0;
+
+    auto barra = [](int valor, int ancho) -> String {
+      int bloques = map(constrain(valor, 0, 100), 0, 100, 0, ancho);
+      String b = "|";
+      for (int i = 0; i < ancho; i++) b += (i < bloques) ? "=" : " ";
+      b += "|";
+      return b;
+    };
+
+    char fila0[17], fila1[17];
+
+    switch (pantalla) {
+      case 0: // TEMP + CPU
+        snprintf(fila0, sizeof(fila0), "TEMP%s%3dC", barra(temp, 5).c_str(), temp);
+        snprintf(fila1, sizeof(fila1), "CPU %s%3d%%", barra(cpu, 5).c_str(), cpu);
+        break;
+      case 1: // C0 + C1
+        snprintf(fila0, sizeof(fila0), "C0  %s%3d%%", barra(c0, 5).c_str(), c0);
+        snprintf(fila1, sizeof(fila1), "C1  %s%3d%%", barra(c1, 5).c_str(), c1);
+        break;
+      case 2: // RAM + Flash
+        snprintf(fila0, sizeof(fila0), "RAM %s%3d%%", barra(ramUsada, 5).c_str(), ramUsada);
+        snprintf(fila1, sizeof(fila1), "FLSH%s%.1f%%", barra(flash, 5).c_str(), (float)flash);
+        break;
+      case 3: // WiFi + Uptime
+        snprintf(fila0, sizeof(fila0), "WIFI%s%3d%%", barra(wifiQ, 5).c_str(), wifiQ);
+        snprintf(fila1, sizeof(fila1), "UP   %.8s   ", uptime.c_str());
+        break;
+    }
+
+    lcd.setCursor(0, 0);
+    lcd.print(fila0);
+    lcd.setCursor(0, 1);
+    lcd.print(fila1);
+
+    pantalla = (pantalla + 1) % 4;
+
+    xSemaphoreGive(i2cMutex);
+  }
+}
+
 
 // ============================================================================
 // 5. TAREAS MULTINÚCLEO (FreeRTOS)
 // ============================================================================
 void taskCore0(void * pvParameters) { 
-  // 1. Inicialización de archivos (Solo ocurre una vez al arrancar el hilo)
   if (!LittleFS.begin(true, "/spiffs", 10, "ffat")) { 
       if (!LittleFS.begin(true)) Serial.println("❌ [ERROR] Flash no montada");
       else Serial.println("✅ [OK] Flash montada en Modo Rescate");
@@ -1679,41 +1815,33 @@ void taskCore0(void * pvParameters) {
       Serial.println("✅ [OK] Flash montada correctamente");
   }
 
-  // ====================================================================
-  // SISTEMA DE AUTO-LIMPIEZA INTELIGENTE (Límite: 5 MB)
-  // ====================================================================
   if (LittleFS.exists("/datos.csv")) {
       File dbFile = LittleFS.open("/datos.csv", "r");
       if (dbFile) {
           size_t fileSize = dbFile.size();
-          dbFile.close(); // Cerramos el archivo antes de decidir si lo borramos
-
-          // 5 MB en bytes = 5 * 1024 * 1024 = 5242880 bytes
+          dbFile.close(); 
           if (fileSize > 8388608) {
               LittleFS.remove("/datos.csv");
-              Serial.println("🧹 [SISTEMA] Base de datos superó los 5MB. Limpieza automática ejecutada.");
-          } else {
-              Serial.printf("📊 [SISTEMA] Tamaño actual de la BD: %d KB\n", fileSize / 1024);
+              Serial.println("🧹 [SISTEMA] Base de datos superó límite. Limpieza ejecutada.");
           }
       }
   }
-
 
   iniciarServidorWeb();
   telnetServer.begin(); 
 
   unsigned long lastTelemetryTime = 0;
+  unsigned long tiempoUltimoGuardadoBD = 0; // NUEVO: Sacamos la variable del bucle
+  bool primerGuardado = true;               // NUEVO: Bandera para guardar al arrancar
 
   for(;;) {                       
-    // 🛡️ ESCUDO ANTI-CRASH: Si el setup() no ha terminado, esperamos fuera
     if (!sistemaListo) {
         vTaskDelay(100 / portTICK_PERIOD_MS);
         continue; 
     }
 
-    // Mantenimiento de red y OTA
     ArduinoOTA.handle();          
-    yield(); // Cede el paso al stack de WiFi para evitar micro-cortes
+    yield(); 
     
     // --- 1. GESTIÓN DEL TELNET ---
     if (telnetServer.hasClient()) { 
@@ -1721,7 +1849,7 @@ void taskCore0(void * pvParameters) {
           telnetServer.available().stop(); 
       } else {                      
         telnetClient = telnetServer.available();
-        Terminal.println("\n[SISTEMA] Conectado al SO Blasco mediante TCP.");
+        Terminal.println("\n[SISTEMA] Conectado TCP.");
         mostrarMenuPrincipal();   
       }
     }
@@ -1729,16 +1857,16 @@ void taskCore0(void * pvParameters) {
     // --- 2. GESTIÓN DE LA PÁGINA WEB ---
     if (ws->count() > 0) { 
         if (tiempoInicioWeb == 0) tiempoInicioWeb = millis(); 
-        
-        // Abrir consola tras 30 segundos
         if (!permitirWebLog && (millis() - tiempoInicioWeb >= 30000)) {
             permitirWebLog = true; 
             mostrarMenuPrincipal(); 
         }
 
-        // Envío de telemetría cada 5 segundos
-        if (millis() - lastTelemetryTime >= 5000) { 
+    // Envío de telemetría al instante si hay conexión nueva, o cada 5 segundos
+    if (forzarTelemetria || (millis() - lastTelemetryTime >= 5000)) { 
+            forzarTelemetria = false; // Apagamos el interruptor
             lastTelemetryTime = millis(); 
+            
             StaticJsonDocument<256> doc; 
             doc["type"] = "telemetry";
             doc["temp"] = temperatureRead(); 
@@ -1759,49 +1887,51 @@ void taskCore0(void * pvParameters) {
             String out;
             serializeJson(doc, out);         
             ws->textAll(out);   
-            ws->cleanupClients();             
-        }
+            ws->cleanupClients();  
+
+            actualizarLCD();           
+    }
     } else {
         tiempoInicioWeb = 0;
         permitirWebLog = false;
     }
 
-    // --- 3. LÓGICA DEL LED RGB (Pin 48) ---
-    // Comprobamos el estado del WiFi de forma segura
+    // --- 3. LÓGICA DEL LED RGB ---
     wl_status_t wifiStatus = WiFi.status();
-
     if (wifiStatus != WL_CONNECTED) {
-        // Si no hay WiFi, LED Apagado (puedes poner pixel.Color(10, 0, 0) para Rojo si quieres)
         pixel.setPixelColor(0, pixel.Color(0, 0, 0)); 
     } 
     else {
-        // WiFi OK -> ¿Hay alguien conectado?
         bool alguienConectado = (telnetClient && telnetClient.connected()) || (ws->count() > 0);
-
         if (alguienConectado) { 
-            // ACTIVIDAD -> AZUL PARPADEANTE
             if (millis() - previousMillisLED >= 500) { 
                 previousMillisLED = millis();
                 ledState = !ledState;             
                 pixel.setPixelColor(0, ledState ? pixel.Color(0, 0, 10) : pixel.Color(0, 0, 0));
             }
         } else {                                      
-            // REPOSO -> VERDE FIJO
             pixel.setPixelColor(0, pixel.Color(0, 10, 0)); 
             ledState = false; 
         }
     }
     pixel.show(); 
 
-
     // --- 4. Guardar Historial Base de Datos ---
-    static unsigned long tiempoUltimoGuardadoBD = 0;
-    if (millis() - tiempoUltimoGuardadoBD >= 1800000) { // Guarda cada 1 minuto (60000 ms)
+    // 1º Guardado: Espera 10 segundos al arrancar para que el reloj de Internet (NTP) coja la hora real
+    if (primerGuardado && millis() > 10000) { 
+        tiempoUltimoGuardadoBD = millis();
+        primerGuardado = false;
+        guardarEnHistorial();
+        
+    } 
+
+    // Siguientes guardados: Cada 30 minutos (1800000 ms)
+    else if (!primerGuardado && (millis() - tiempoUltimoGuardadoBD >= 1800000UL)) { 
         tiempoUltimoGuardadoBD = millis();
         guardarEnHistorial();
-    }    
+    }
     
-    vTaskDelay(1); // Mantiene el Watchdog feliz y el WiFi fluido
+    vTaskDelay(1); 
   }
 }
 
@@ -2000,6 +2130,15 @@ void setup() {
   Serial.begin(115200);
   delay(2000);
 
+  // 👇 PRIMERO EL LCD, antes de WiFi, FreeRTOS y todo lo demás
+  Wire.begin(8, 9);
+  i2cMutex = xSemaphoreCreateMutex();
+  lcd.init();
+  lcd.init(); // doble init fuerza reset sin delay
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("ZENITH SYSTEM...");
+
   Serial.printf("📦 Flash: %d MB\n", ESP.getFlashChipSize() / (1024 * 1024));
   Serial.printf("🧠 PSRAM: %d MB\n", ESP.getPsramSize() / (1024 * 1024)); 
 
@@ -2059,6 +2198,7 @@ void setup() {
 
   delay(100);
   sistemaListo = true;
+
 }
 
 void loop() {    
