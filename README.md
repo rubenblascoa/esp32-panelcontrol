@@ -1,4 +1,4 @@
-# 🚀 ESP32 Blasco OS | Multi-Program Telnet Environment
+# 🚀 ESP32 Blasco OS | Multi-Program 
 
 **ESP32 Blasco** es una plataforma de ingeniería a bajo nivel y un entorno de ejecución multiprograma diseñado exclusivamente para el microcontrolador ESP32. 
 
