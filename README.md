@@ -60,6 +60,8 @@ Para que el proyecto compile correctamente y el panel web tenga espacio suficien
 
 Esta configuración está optimizada para placas **ESP32-S3 (N16R8)** con 16MB de Flash y 8MB de PSRAM.
 
+Además, el usuario y contraseña establecidos son admin/blasco. Dicha combinación es modificable en el archivo arduino.
+
 | Parámetro de Configuración | Valor Exacto Requerido |
 | :--- | :--- |
 | **Placa (Board)** | `ESP32S3 Dev Module` |
