@@ -38,8 +38,8 @@
 // ============================================================================
 // 1. CONFIGURACIÓN Y PINES
 // ============================================================================
-const char* ssid = "NETLLAR_BLASCO";     // Credenciales de la red local
-const char* password = "978830522ro_";
+const char* ssid = "";     // Credenciales de la red local
+const char* password = "";
 
 #define LED_PIN   48               // Pin del LED de estado de la placa base
 #define NUMPIXELS       1  // Solo hay un LED en la placa
