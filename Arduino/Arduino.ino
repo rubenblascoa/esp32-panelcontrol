@@ -45,8 +45,8 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 // ============================================================================
 // 1. CONFIGURACIÓN Y PINES
 // ============================================================================
-const char* ssid = "NETLLAR_BLASCO";     // Credenciales de la red local
-const char* password = "978830522ro_";
+const char* ssid = "";     // Credenciales de la red local
+const char* password = "";
 
 #define LED_PIN   48               // Pin del LED de estado de la placa base
 #define NUMPIXELS       1  // Solo hay un LED en la placa
@@ -1743,7 +1743,7 @@ void guardarEnHistorial() {
 
     file.printf("%s,%.1f,%d,%d,%d,%.1f,%.1f,%d\n", fechaHora.c_str(), temp, cpu, c0, c1, ramUsada, flash, wifi);    
     file.close();
-    Serial.println("💾 [SISTEMA] Registro guardado en Flash (30 mins).");
+    Serial.println("💾 [SISTEMA] Registro guardado en Flash (2 horas).");
 }
 
 void actualizarLCD() {
@@ -1854,20 +1854,30 @@ void taskCore0(void * pvParameters) {
       }
     }
 
-    // --- 2. GESTIÓN DE LA PÁGINA WEB ---
+    // --- 2. ACTUALIZACIÓN INDEPENDIENTE DE PANTALLA LCD ---
+    // Sacamos la pantalla fuera del bloque de la web para que funcione siempre
+    static unsigned long tiempoUltimoLCD = 0;
+    if (millis() - tiempoUltimoLCD >= 3000) { // Se actualiza cada 3 segundos
+        tiempoUltimoLCD = millis();
+        actualizarLCD(); 
+    }
+
+    // --- 3. GESTIÓN DE LA PÁGINA WEB (Telemetría) ---
     if (ws->count() > 0) { 
-        if (tiempoInicioWeb == 0) tiempoInicioWeb = millis(); 
+        if (tiempoInicioWeb == 0) tiempoInicioWeb = millis();
+        
+        // El Log del menú solo se permite tras 30 segundos de conexión web
         if (!permitirWebLog && (millis() - tiempoInicioWeb >= 30000)) {
-            permitirWebLog = true; 
+            permitirWebLog = true;
             mostrarMenuPrincipal(); 
         }
 
-    // Envío de telemetría al instante si hay conexión nueva, o cada 5 segundos
-    if (forzarTelemetria || (millis() - lastTelemetryTime >= 5000)) { 
-            forzarTelemetria = false; // Apagamos el interruptor
+        // Envío de telemetría cada 5 segundos
+        if (forzarTelemetria || (millis() - lastTelemetryTime >= 5000)) { 
+            forzarTelemetria = false;
             lastTelemetryTime = millis(); 
             
-            StaticJsonDocument<256> doc; 
+            StaticJsonDocument<256> doc;
             doc["type"] = "telemetry";
             doc["temp"] = temperatureRead(); 
             doc["cpu"] = random(8, 15);      
@@ -1888,47 +1898,50 @@ void taskCore0(void * pvParameters) {
             serializeJson(doc, out);         
             ws->textAll(out);   
             ws->cleanupClients();  
-
-            actualizarLCD();           
-    }
+            
+            // ¡IMPORTANTE!: Aquí ya NO llamamos a actualizarLCD() 
+            // porque ya lo hacemos arriba de forma independiente.
+        }
     } else {
         tiempoInicioWeb = 0;
         permitirWebLog = false;
     }
 
-    // --- 3. LÓGICA DEL LED RGB ---
-    wl_status_t wifiStatus = WiFi.status();
-    if (wifiStatus != WL_CONNECTED) {
-        pixel.setPixelColor(0, pixel.Color(0, 0, 0)); 
-    } 
-    else {
-        bool alguienConectado = (telnetClient && telnetClient.connected()) || (ws->count() > 0);
-        if (alguienConectado) { 
-            if (millis() - previousMillisLED >= 500) { 
-                previousMillisLED = millis();
-                ledState = !ledState;             
-                pixel.setPixelColor(0, ledState ? pixel.Color(0, 0, 10) : pixel.Color(0, 0, 0));
-            }
-        } else {                                      
-            pixel.setPixelColor(0, pixel.Color(0, 10, 0)); 
-            ledState = false; 
+    // --- 4. Guardar Historial Base de Datos ---
+    // 1º Guardado: Espera a que NTP esté sincronizado
+    if (primerGuardado) {
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo) && timeinfo.tm_year > 100) { // año > 2000 = NTP ok
+            tiempoUltimoGuardadoBD = millis();
+            primerGuardado = false;
+            guardarEnHistorial();
         }
     }
-    pixel.show(); 
-
-    // --- 4. Guardar Historial Base de Datos ---
-    // 1º Guardado: Espera 10 segundos al arrancar para que el reloj de Internet (NTP) coja la hora real
-    if (primerGuardado && millis() > 10000) { 
-        tiempoUltimoGuardadoBD = millis();
-        primerGuardado = false;
-        guardarEnHistorial();
-        
-    } 
-
     // Siguientes guardados: Cada 30 minutos (1800000 ms)
-    else if (!primerGuardado && (millis() - tiempoUltimoGuardadoBD >= 1800000UL)) { 
+    else if (!primerGuardado && (millis() - tiempoUltimoGuardadoBD >= 7200000UL)) { 
         tiempoUltimoGuardadoBD = millis();
         guardarEnHistorial();
+    }
+
+    // --- 5. LÓGICA DEL LED RGB (NeoPixel) ---
+    bool hayEspectadoresLED = (telnetClient && telnetClient.connected()) || (ws->count() > 0);
+    
+    if (hayEspectadoresLED) { 
+      // Si hay alguien en la web/telnet: Parpadea en AZUL
+      if (millis() - previousMillisLED >= 500) { 
+        previousMillisLED = millis();
+        ledState = !ledState;             
+        if (ledState) {
+            pixel.setPixelColor(0, pixel.Color(0, 0, 255)); // Encendido: Azul
+        } else {
+            pixel.setPixelColor(0, pixel.Color(0, 0, 0));   // Apagado
+        }
+        pixel.show();
+      }
+    } else {                                      
+      // Estado de reposo (Nadie conectado): Verde suave estático
+      pixel.setPixelColor(0, pixel.Color(0, 25, 0)); 
+      pixel.show(); 
     }
     
     vTaskDelay(1); 
