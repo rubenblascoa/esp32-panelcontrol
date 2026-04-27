@@ -51,7 +51,7 @@ Módulo de telemetría física utilizando el sensor de distancia **HC-SR04**.
 
 ## 🔌 Hardware Requerido e Instalación
 
-* **Placa Base:** ESP32 (WROOM-32 o similar).
+* **Placa Base:** ESP32 (S3 N16R8 o similar).
 * **Módulo NFC:** Lector RFID MFRC522 (Conectado por bus SPI: SDA->D5, RST->D21).
 * **Módulo Distancia:** Sensor HC-SR04 (TRIG->D12, ECHO->D14).
 
