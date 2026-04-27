@@ -6,6 +6,15 @@ Actúa como un pequeño "Sistema Operativo" accesible de forma remota a través 
 
 👨‍💻 **Desarrollado por:** Ruben Blasco Armengod
 
+## 📬 Contacta conmigo
+
+Si tienes alguna duda, sugerencia o propuesta de colaboración, no dudes en ponerte en contacto conmigo:
+
+- GitHub: https://github.com/rubenblascoa
+- Email: rubenblascoarmengod@gmail.com
+
+También puedes abrir un *issue* en este repositorio y te responderé lo antes posible.
+
 ---
 
 ## ⚙️ Características Principales
