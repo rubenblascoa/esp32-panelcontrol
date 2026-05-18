@@ -39,6 +39,79 @@
 ---
 </div>
 
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:folder-tree.svg?color=white"><img src="https://api.iconify.design/lucide:folder-tree.svg?color=black" width="26" align="center"></picture> Architecture et Structure Modulaire
+
+Le firmware implémente une séparation stricte des responsabilités matérielles et logicielles via un découplage asynchrone multicœur. Voici le but et la logique d'exécution interne de chaque fichier du système :
+
+### 1. Le Noyau d'Entrée et d'Orchestration
+* **`main.ino`**
+  * **But :** Point de démarrage physique de l'ESP32-S3 et fichier principal lu par l'Arduino IDE pour compiler tout le répertoire.
+  * **Logique détaillée :** Contient un `loop()` vide et une méthode `setup()` chargée de réveiller les composants en cascade stricte (port série, bus I2C, écran LCD, broches GPIO, modem Wi-Fi et synchronisation NTP). À la fin, il crée les deux tâches FreeRTOS (`taskCore0` et `taskCore1`) en leur transmettant le contrôle et s'auto-détruit via `vTaskDelete(NULL)` pour déléguer 100% du CPU aux threads asynchrones.
+
+### 2. Configuration et Mémoire Partagée
+* **`config.h`**
+  * **But :** Définit les bibliothèques système, les mappages de broches physiques de la carte et déclare de manière abstraite les variables partagées par les deux cœurs.
+  * **Logique détaillée :** Héberge les directives `#include` et les `#define` de la LED, du lecteur RFID et du capteur à ultrasons. Il contient les signatures des variables globales précédées du mot-clé `extern`, indiquant aux autres fichiers `.cpp` que la variable existe dans la RAM commune, évitant ainsi les duplications et les erreurs de liaison (*linker errors*).
+* **`config.cpp`**
+  * **But :** Fonctionne comme l'espace physique réel dans la mémoire RAM où les variables du dictionnaire `config.h` sont créées et initialisées.
+  * **Logique détaillée :** S'exécute une seule fois au démarrage pour réserver l'espace exact requis par le firmware. Stocke les identifiants Wi-Fi réels, l'allocation mémoire pour les objets du serveur web, les matrices fixes des clés MIFARE et les tampons de synchronisation des commandes.
+
+### 3. Le Canal de Texte Dupliqué
+* **`terminal.h`**
+  * **But :** Définit la structure de la classe personnalisée `TerminalHibrida`.
+  * **Logique détaillée :** Déclare la classe en héritant de la bibliothèque native `Print` d'Arduino, ce qui permet d'exposer les méthodes traditionnelles `.print()` et `.println()`, ainsi que les contrôleurs de blocs dynamiques (`iniciarBloque()`, `enviarBloque()`).
+* **`terminal.cpp`**
+  * **But :** Contrôle l'algorithme asynchrone qui duplique les messages texte en temps réel.
+  * **Logique détaillée :** Lors de l'appel à `Terminal.println()`, il intercepte les caractères en les envoyant d'abord via le socket TCP ouvert vers Telnet (Putty). En parallèle, si un navigateur web est à l'écoute, il accumule les caractères dans une chaîne dynamique (`bufferWeb`) et les distribue au WebSocket lorsqu'il rencontre un saut de ligne `\n` (sauf en Mode Bloc). Il dispose d'une règle de sécurité qui vide le tampon s'il dépasse 200 caractères pour éviter les fuites de mémoire.
+
+### 4. Interface Graphique et Frontend
+* **`web_pages.h`**
+  * **But :** Déclare trois constantes de texte globales contenant les fichiers structurés du frontend.
+  * **Logique détaillée :** Expose les références à `index_html`, `db_html` et `login_html` accompagnées du modificateur de stockage `PROGMEM`.
+* **`web_pages.cpp`**
+  * **But :** Stocke de manière exacte et massive tout le code HTML, CSS et JavaScript des trois panneaux de contrôle web.
+  * **Logique détaillée :** Oblige l'ESP32-S3 via la directive `PROGMEM` à sauvegarder ces pages dans les transistors inalterables de la mémoire Flash (ROM). Si elles étaient hébergées dans la RAM conventionnelle, elles consommeraient plus de 80% du Heap dynamique, provoquant des redémarrages par manque de mémoire lors de la connexion des utilisateurs.
+
+### 5. Routage et Sécurité Réseau
+* **`web_server.h`**
+  * **But :** Définit les fonctions du serveur HTTP asynchrone et le callback du WebSocket qui traitera les trames web.
+* **`web_server.cpp`**
+  * **But :** Fonctionne comme le répartiteur de trafic réseau assigné au Core 0.
+  * **Logique détaillée :**
+    * *Sécurité :* Exécute la fonction `estaLogueado()`, inspectant les en-têtes HTTP à la recherche du cookie `ZENITH_SESSION` lié au jeton aléatoire de la RAM.
+    * *Routes HTTP :* Gère les requêtes vers `/login` (en créant le cookie avec les attributs `HttpOnly` et `SameSite=Strict`), `/logout` (détruit la session), `/datos.csv` (effectue un streaming direct du fichier historique depuis LittleFS vers le navigateur) et `/delete-db` (supprime le fichier physique de logs).
+    * *WebSocket (onWsEvent) :* Capture la trame réseau brute lorsqu'un utilisateur écrit dans la console du navigateur ; s'il reçoit `"reboot"`, il redémarre la carte, et s'il reçoit des commandes de contrôle, il les copie dans `entradaWeb` et lève le drapeau `hayEntradaWeb` pour avertir le Core 1.
+
+### 6. Contrôleurs de Capteurs (Hardware)
+* **`nfc.h` / `nfc.cpp`**
+  * **But :** Gère les cycles de lecture et de clonage par proximité via le bus physique SPI.
+  * **Logique détaillée :** Lorsque le Core 1 lui donne le feu vert, il interroge en continu le matériel MFRC522. En mode lecture, il effectue un défi cryptographique sur le tag physique à l'aide de mots de passe MIFARE ; s'il répond correctement, il bascule le Bloc 0 dans la variable `bloqueEscaneado`. En mode écriture, il injecte cette matrice de données dans une carte réinscriptible vierge.
+* **`ultrasonidos.h` / `ultrasonidos.cpp`**
+  * **But :** Mesure l'espace euclidien à l'aide de rebonds acoustiques à haute fréquence.
+  * **Logique détaillée :** Place la broche `TRIG_PIN` à un potentiel de zéro, émet une impulsion ultrasonique en maintenant la broche à l'état haut pendant exactement 10 microsecondes, puis la coupe. Immédiatement après, il exécute un appel `pulseIn` de haute précision sur la broche `ECHO_PIN` avec un temps de grâce de 30 ms. Si l'écho revient, il calcule la distance en centimètres en divisant le temps par deux et en appliquant la vitesse du son.
+
+### 7. Utilitaires et Historique sur Disque
+* **`utils.h` / `utils.cpp`**
+  * **But :** Offre un support logique de backend au firmware pour les statistiques, le temps et la gestion du bus I2C.
+  * **Logique détaillée :**
+    * `calcularUsoCPU()` : Estime mathématiquement la charge de stress heuristique des cœurs selon les tâches actives.
+    * `guardarEnHistorial()` : Ouvre le fichier `/datos.csv` dans LittleFS et ajoute une ligne structurée avec la date, la température interne de la puce, les charges dynamiques du CPU, l'occupation de la RAM/Flash et le niveau de signal Wi-Fi.
+    * `actualizarLCD()` : Contrôle l'écran physique via l'appel `xSemaphoreTake(i2cMutex)` pour verrouiller le bus I2C avant l'écriture, évitant ainsi les collisions de données, affichant des barres de progression visuelles (`|====  |`) et alternant automatiquement toutes les 3 secondes entre 4 pages de télémétrie.
+
+### 8. Couche de Texte (Interface CLI)
+* **`menus.h` / `menus.cpp`**
+  * **But :** Contiene le design visuel en texto plano y el árbol de navegación jerárquico del sistema operativo.
+  * **Logique détaillée :** Gère ce que l'utilisateur visualise lorsqu'il se connecte par terminal. Appelle `Terminal.iniciarBloque()` pour retenir les caractères, imprime les cadres décoratifs de la console et concatène le calcul en temps réel de la PSRAM, de la vitesse du processeur et de l'Uptime avant d'envoyer le bloc unifié au réseau. Héberge les fonctions qui modifient la variable `programaActivo` pour changer de menu.
+
+### 9. Le Planificateur Multicœur (FreeRTOS)
+* **`tareas.h` / `tareas.cpp`**
+  * **But :** Héberge les deux boucles infinies distribuées par le matériel qui remplacent le `loop` conventionnel d'Arduino.
+  * **Logique détaillée :**
+    * `taskCore0` (Assigné au Noyau 0) : Monte le système de fichiers LittleFS (en le formatant si une corruption est détectée). Traite les connexions réseau entrantes, gère les mises à jour OTA, exécute l'horloge synchrone NTP, déclenche le cronjob de la base de données toutes les 2 heures et contrôle le clignotement stroboscopique de la LED d'état.
+    * `taskCore1` (Assigné au Noyau 1) : Surveille en parallèle si une commande est entrée via Putty ou les WebSockets. Selon l'état de `programaActivo`, il exécute de manière asynchrone l'écoute NFC sur le bus SPI ou effectue des tirs d'ultrasons à une fréquence exacte de 1 Hz (toutes les 1000 ms) sans jamais interférer avec les processus réseau de l'autre cœur.
+
+---
+
 ## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:list.svg?color=white"><img src="https://api.iconify.design/lucide:list.svg?color=black" width="26" align="center"></picture> Caractéristiques Principales
 
 * **Contrôle 100% Sans Fil :** Accès complet à l'interface utilisateur via n'importe quel client Telnet (Port 23) sur le réseau Wi-Fi local.
