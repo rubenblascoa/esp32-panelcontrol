@@ -1,0 +1,534 @@
+<! MIT License 
+
+Copyright (c) 2026 Ruben Blasco Armengod
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE. !>
+
+<! --- !>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZenithMC | Base de Datos</title>
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/8463/8463850.png">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;600;900&display=swap" rel="stylesheet">
+
+<style>
+        :root { 
+            --bg-color: #05070a; --bg-gradient: radial-gradient(circle at 50% 0%, #161b22 0%, #05070a 80%);
+            --card-bg: #0d1117; --border-color: #1f2530; --text-main: #ffffff; --text-muted: #8b949e;
+            --card-shadow: 0 5px 15px rgba(0,0,0,0.3); --term-bg: #000000; --term-header: #161a21;
+            --accent: #00d4ff; --safe: #00ff88; --warn: #ffcc00; --crit: #ff4b4b;
+        }
+        body.light-theme {
+            --bg-color: #f3f4f6; --bg-gradient: radial-gradient(circle at 50% 0%, #ffffff 0%, #e5e7eb 100%);
+            --card-bg: #ffffff; --border-color: #d1d5db; --text-main: #111827; --text-muted: #6b7280;
+            --card-shadow: 0 5px 15px rgba(0,0,0,0.05); --term-bg: #f9fafb; --term-header: #e5e7eb;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 10px; border: 2px solid var(--bg-color); }
+        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+        body { font-family: 'Inter', system-ui, sans-serif; background-color: var(--bg-color); background-image: var(--bg-gradient); background-attachment: fixed; color: var(--text-main); margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; transition: background-color 0.4s, color 0.4s; }
+        .back-nav { position: sticky; top: 0; width: 100%; max-width: 100% !important; padding: 30px 5% 20px 5%; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; z-index: 1000; transition: all 0.4s ease; box-sizing: border-box; background: transparent; }
+        .back-nav.scrolled { padding: 15px 5%; background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        body.light-theme .back-nav.scrolled { background: rgba(255, 255, 255, 0.85); }
+        .nav-left { justify-self: start; display: flex; gap: 20px; align-items: center; }
+        #nav-status { display: flex; align-items: center; justify-content: center; height: 100%; }
+        .btn-back { display: flex; align-items: center; gap: 10px; color: var(--text-main); text-decoration: none; font-weight: 700; font-size: 0.95rem; transition: 0.3s; text-transform: uppercase; opacity: 0.7; }
+        .btn-back:hover { opacity: 1; color: var(--accent); transform: translateX(-4px); }
+        .theme-toggle { justify-self: end; background: transparent; border: none; color: var(--text-main); cursor: pointer; opacity: 0.7; transition: 0.3s; display: flex; align-items: center; justify-content: center; }
+        .theme-toggle:hover { opacity: 1; color: var(--accent); transform: scale(1.1) rotate(15deg); }
+
+        .header-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; display: inline-flex; align-items: center; gap: 6px; transition: all 0.3s ease; }
+        .badge-online { background: rgba(0, 255, 136, 0.1); color: var(--safe); border: 1px solid rgba(0, 255, 136, 0.3); }
+        .badge-online::before { content: ''; width: 8px; height: 8px; background: var(--safe); border-radius: 50%; box-shadow: 0 0 10px var(--safe); animation: pulse 2s infinite; }
+        .badge-offline { background: rgba(255, 75, 75, 0.1); color: var(--crit); border: 1px solid rgba(255, 75, 75, 0.3); }
+        .badge-offline::before { content: ''; width: 8px; height: 8px; background: var(--crit); border-radius: 50%; box-shadow: 0 0 5px var(--crit); }
+        .badge-connecting { background: rgba(255, 204, 0, 0.1); color: var(--warn); border: 1px solid rgba(255, 204, 0, 0.3); }
+        .badge-connecting::before { content: ''; width: 8px; height: 8px; background: var(--warn); border-radius: 50%; box-shadow: 0 0 10px var(--warn); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(0, 255, 136, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); } }
+
+        .master-wrap { width: 95%; max-width: 1400px; display: flex; flex-direction: column; gap: 30px; padding-bottom: 40px; flex: 1; }
+        .header-box { text-align: center; margin-top: 10px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .brand-container { display: flex; align-items: center; justify-content: center; gap: 20px; }
+        .brand-container h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin: 0; color: var(--text-main); text-shadow: 0 0 15px rgba(255, 255, 255, 0.15); }
+        body.light-theme .brand-container h1 { text-shadow: none; }
+        .header-subtitle { color: var(--text-muted); font-size: 0.95rem; letter-spacing: 2px; text-transform: uppercase; font-weight: 600; margin: 0; }
+        
+        .btn-volver-blanco { background: transparent; color: #ffffff; border: 1px solid #ffffff; padding: 8px 20px; border-radius: 8px; font-weight: 800; text-decoration: none; font-size: 0.85rem; text-transform: uppercase; transition: 0.3s; margin-top: 10px; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-volver-blanco:hover { background: #ffffff; color: #000000; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4); transform: scale(1.05); }
+        body.light-theme .btn-volver-blanco { color: #111827; border-color: #111827; }
+        body.light-theme .btn-volver-blanco:hover { background: #111827; color: #ffffff; }
+
+        .section-title { font-size: 1rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; text-align: left; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+
+        .db-container { background: var(--card-bg); border-radius: 15px; border: 1px solid var(--border-color); box-shadow: var(--card-shadow); overflow: hidden; }
+        .table-wrapper { width: 100%; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
+        thead { background: var(--term-header); position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+        th { padding: 15px 20px; color: var(--text-muted); font-weight: 800; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border-color); }
+        td { padding: 12px 20px; border-bottom: 1px solid var(--border-color); color: var(--text-main); font-family: 'Consolas', monospace; font-size: 0.95rem; font-weight: 600; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background-color: var(--term-bg); }
+
+        .d-crit { color: var(--crit); text-shadow: 0 0 10px rgba(255,75,75,0.3); }
+        .d-warn { color: var(--warn); }
+        .d-ok { color: var(--safe); }
+        .d-id { color: var(--text-muted); font-size: 0.8rem; }
+
+        /* PAGINACIÓN Y BOTONES ACCIÓN */
+        .pagination-wrapper { display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding: 0 5px; }
+        .pagination { display: inline-flex; align-items: center; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; box-shadow: var(--card-shadow); }
+        .pagination button { background: transparent; border: none; border-right: 1px solid var(--border-color); color: var(--text-main); padding: 10px 16px; font-size: 0.9rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: 0.3s; font-family: 'Inter', sans-serif; font-weight: 600; }
+        .pagination button:last-child { border-right: none; }
+        .pagination button:hover:not(:disabled) { background: rgba(255,255,255,0.05); }
+        body.light-theme .pagination button:hover:not(:disabled) { background: rgba(0,0,0,0.05); }
+        
+        /* Botón de página activa en BLANCO */
+        .pagination button.active { background: #ffffff !important; color: #000000 !important; font-weight: 900; box-shadow: 0 0 10px rgba(255, 255, 255, 0.3); }
+        
+        .pagination button:disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.5; }
+        .pagination svg { width: 16px; height: 16px; }
+
+        /* Estilo para botones de acción pequeños */
+        .btn-accion { background: transparent; padding: 6px 12px; border-radius: 6px; font-weight: 900 !important; font-size: 0.75rem; text-transform: uppercase; transition: 0.3s; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; border: 1px solid; margin: 0; text-decoration: none; }
+        .btn-accion:hover { transform: scale(1.05); filter: brightness(1.2); }
+
+        .footer-zenith { width: 100%; background: var(--card-bg); padding: 30px 0; border-top: 1px solid var(--border-color); text-align: center; margin-top: auto; transition: 0.4s; }
+        .footer-zenith p { color: var(--text-muted); font-size: 0.9rem; margin: 4px 0; }
+        .footer-zenith a { color: var(--text-main); text-decoration: none; font-weight: 700; }
+
+        .btn-accion-logout {
+            background: transparent;
+            padding: 8px 18px;
+            border-radius: 10px;
+            font-weight: 900;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            transition: 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            border: 1px solid var(--crit); /* Color rojo de tu paleta */
+            color: var(--crit);
+            text-decoration: none;
+            letter-spacing: 1px;
+        }
+        .btn-accion-logout:hover {
+            background: var(--crit);
+            color: #fff;
+            box-shadow: 0 0 15px var(--crit);
+            transform: scale(1.05);
+        }
+        .btn-accion-logout svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* ESTILOS PARA EL PERFIL DE USUARIO EN TOPBAR */
+        .nav-right {
+            justify-self: end;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-muted);
+            font-weight: 800;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: 0.3s;
+        }
+
+        .user-profile:hover {
+            color: var(--text-main);
+        }
+
+        .user-profile img {
+            width: 18px; /* Reducido de 22px */
+            height: 18px;
+            border-radius: 50%;
+            filter: grayscale(1) opacity(0.7);
+            border: 1px solid var(--border-color);
+        }
+
+
+        /* Estilos para que el modal funcione correctamente */
+        .modal-overlay { 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.85); 
+            backdrop-filter: blur(10px); 
+            display: none; /* Esto hace que el menú desaparezca hasta que pulses borrar */
+            justify-content: center; 
+            align-items: center; 
+            z-index: 9999; 
+        }
+
+        .modal-card { 
+            background: var(--card-bg); 
+            border: 2px solid var(--border-color); 
+            border-radius: 30px; 
+            padding: 40px; 
+            width: 90%; 
+            max-width: 400px; 
+            text-align: center; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+        }
+
+        .modal-btns { 
+            display: flex; 
+            gap: 15px; 
+            justify-content: center; 
+            margin-top: 25px; 
+        }
+
+        .modal-btn { 
+            padding: 12px 25px; 
+            border-radius: 12px; 
+            font-weight: 800; 
+            cursor: pointer; 
+            border: none; 
+            text-transform: uppercase; 
+            flex: 1; 
+            transition: 0.3s;
+        }
+
+        @media (max-width: 600px) { 
+            body { zoom: 1; }
+            .back-nav { padding: 15px 5%; grid-template-columns: 1fr 1fr; } 
+            #nav-status { display: none; } 
+            th, td { padding: 10px 15px; font-size: 0.85rem; }
+            .pagination-wrapper { flex-direction: column; gap: 15px; justify-content: center; }
+        }
+    </style>
+</head>
+
+</div>
+
+<body>
+
+    <nav class="back-nav" id="main-nav">
+        <div class="nav-left">
+            <a href="https://github.com/rubenblascoa/esp32-panelcontrol" target="_blank" class="btn-back" style="color: var(--text-main); opacity: 0.7; display: flex; align-items: center; gap: 8px; transition: 0.3s;" onmouseover="this.style.opacity='1'; this.style.color='var(--accent)'" onmouseout="this.style.opacity='0.7'; this.style.color='var(--text-main)'">
+                  <div style="width: 22px; height: 22px; background-color: currentColor; -webkit-mask: url('https://icones.pro/wp-content/uploads/2021/06/icone-github-grise.png') center/contain no-repeat; mask: url('https://icones.pro/wp-content/uploads/2021/06/icone-github-grise.png') center/contain no-repeat;"></div> GITHUB
+            </a>
+        </div>
+        <div id="nav-status"><div class="header-badge badge-connecting" id="status-badge-nav">CONECTANDO...</div></div>
+        <div class="nav-right">
+            <div class="user-profile">
+                <i data-lucide="circle-user"></i>
+                <span>admin</span>
+            </div>
+            <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Cambiar Tema">
+                <i data-lucide="sun"></i>
+            </button>
+        </div>
+    </nav>
+    
+    <div class="master-wrap">
+        <div class="header-box">
+            <div class="brand-container">
+                <i data-lucide="database" style="width: 45px; height: 45px; color: var(--text-main);"></i>
+                <h1>DB BLASCO</h1>
+            </div>
+            <p class="header-subtitle">Historial de Registros de Telemetría (LittleFS)</p>
+            <a href="/" class="btn-volver-blanco"><i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i> Volver al panel principal</a>
+        </div>
+        
+ <section>
+            <div class="section-title">Archivos de Memoria Flash (N16R8)</div>
+            <div class="db-container">
+                <div class="table-wrapper">
+                    <table id="tablaDatos">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th><i data-lucide="clock" style="width: 14px; margin-right: 5px; vertical-align: middle;"></i>Uptime</th>
+                                <th><i data-lucide="thermometer" style="width: 14px; margin-right: 5px; vertical-align: middle;"></i>Temp (°C)</th>
+                                <th><i data-lucide="cpu" style="width: 14px; margin-right: 5px; vertical-align: middle;"></i>CPU (%)</th>
+                                <th><i data-lucide="activity" style="width: 14px; margin-right: 5px; vertical-align: middle;"></i>Core 0</th>
+                                <th><i data-lucide="activity" style="width: 14px; margin-right: 5px; vertical-align: middle;"></i>Core 1</th>
+                                <th><i data-lucide="database" style="width: 14px; margin-right: 5px; vertical-align: middle;"></i>RAM (%)</th>
+                                <th><i data-lucide="hard-drive" style="width: 14px; margin-right: 5px; vertical-align: middle;"></i>Flash (%)</th>
+                                <th><i data-lucide="wifi" style="width: 14px; margin-right: 5px; vertical-align: middle;"></i>WiFi (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaCuerpo"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+        <div class="pagination-wrapper" style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+            <div style="display: flex; gap: 8px;">
+                <a href="/datos.csv" download="historial.csv" class="btn-accion btn-exportar" style="border-color: var(--safe); color: var(--safe);">
+                    <i data-lucide="download"></i> EXPORTAR
+                </a>
+                <button onclick="confirmarBorradoDB()" class="btn-accion btn-borrar" style="border-color: var(--crit); color: var(--crit);">
+                    <i data-lucide="trash-2"></i> BORRAR TODO
+                </button>
+            </div>
+            
+            <div id="pagination-container"></div>
+        </div>
+        </section>
+    </div>
+
+    <footer class="footer-zenith">
+        <p>© 2026 ZenithMC Network. Todos los derechos reservados.</p>
+        <p><a href="mailto:soporte@zenithmc.es">soporte@zenithmc.es</a></p>
+
+        <div style="margin-top: 20px;">
+            <a href="/logout" class="btn-accion-logout">
+                <i data-lucide="log-out"></i> CERRAR SESIÓN
+            </a>
+        </div>
+    </footer>
+
+<script>
+
+// --- GUARDIA DE SESIÓN DE PESTAÑA ---
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    
+    // Si venimos del login exitoso, marcamos esta pestaña como autorizada
+    if (params.get('auth') === 'true') {
+        sessionStorage.setItem('zenith_active', '1');
+        // Limpiamos la URL para que no se vea el ?auth=true
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // Si no hay marca en sessionStorage, significa que la pestaña se acaba de abrir/reabrir
+    // Forzamos el logout para limpiar cookies persistentes del navegador
+    if (!sessionStorage.getItem('zenith_active')) {
+        window.location.href = '/logout';
+    }
+})();
+
+
+lucide.createIcons();
+
+window.onscroll = function() {
+    const nav = document.getElementById("main-nav");
+    if (document.body.scrollTop > 50 || document.documentElement.scrollTop > 50) nav.classList.add("scrolled");
+    else nav.classList.remove("scrolled");
+};
+
+function toggleTheme() {
+    document.body.classList.toggle('light-theme');
+    const isLight = document.body.classList.contains('light-theme');
+    document.getElementById('theme-btn').innerHTML = isLight ? '<i data-lucide="moon"></i>' : '<i data-lucide="sun"></i>';
+    lucide.createIcons();
+}
+
+function setStatusBadge(status) {
+    const badgeNav = document.getElementById('status-badge-nav');
+    if (status === 'online') {
+        badgeNav.className = 'header-badge badge-online';
+        badgeNav.innerText = 'ONLINE';
+    } else if (status === 'offline') {
+        badgeNav.className = 'header-badge badge-offline';
+        badgeNav.innerText = 'OFFLINE';
+    } else if (status === 'connecting') {
+        badgeNav.className = 'header-badge badge-connecting';
+        badgeNav.innerText = 'RECONECTANDO...';
+    }
+}
+
+let gateway = `ws://${window.location.hostname}/ws`;
+let websocket;
+
+function initWebSocket() {
+    setStatusBadge('connecting');
+    websocket = new WebSocket(gateway);
+    websocket.onopen = () => setStatusBadge('online');
+    websocket.onclose = () => {
+        setStatusBadge('offline');
+        setTimeout(initWebSocket, 3000); 
+    };
+}
+
+let allDataRows = [];
+let currentPage = 1;
+const rowsPerPage = 10;
+
+function cargarBaseDatos() {
+    fetch('/datos.csv')
+        .then(response => {
+            if (!response.ok) throw new Error("No hay datos");
+            return response.text();
+        })
+        .then(textoCSV => {
+            const filas = textoCSV.split('\n');
+            allDataRows = []; 
+            let id = filas.length; 
+            for(let i = filas.length - 1; i >= 0; i--) {
+                if(filas[i].trim() !== '') {
+                    const cols = filas[i].split(',');
+                    if(cols.length < 8) continue; 
+                    allDataRows.push({ id: id, cols: cols });
+                    id--;
+                }
+            }
+            if(allDataRows.length === 0) throw new Error("Sin datos");
+            renderPage(1);
+        })
+        .catch(error => {
+            document.getElementById('tablaCuerpo').innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 30px; color: var(--text-main);"><i data-lucide="alert-circle" style="width: 24px; height: 24px; vertical-align: middle; margin-right: 10px;"></i>Sin datos registrados (Esperando al primer guardado)</td></tr>`;
+            document.getElementById('pagination-container').innerHTML = '';
+            lucide.createIcons();
+        });
+}
+
+function renderPage(page) {
+    currentPage = page;
+    const totalPages = Math.ceil(allDataRows.length / rowsPerPage);
+    const startIndex = (page - 1) * rowsPerPage;
+    const endIndex = startIndex + rowsPerPage;
+    const pageData = allDataRows.slice(startIndex, endIndex);
+
+    const tbody = document.getElementById('tablaCuerpo');
+    tbody.innerHTML = ''; 
+
+    pageData.forEach(row => {
+        const cols = row.cols;
+        const fechaHora = cols[0]; // <--- Ahora contiene "DD/MM/YYYY HH:MM"
+        const temp = parseFloat(cols[1]);
+        const cpu = parseInt(cols[2]);
+        const c0 = parseInt(cols[3]);
+        const c1 = parseInt(cols[4]);
+        const ram = parseFloat(cols[5]);
+        const flash = parseFloat(cols[6]);
+        const wifi = parseInt(cols[7]);
+
+        let tempClass = temp >= 65 ? 'd-crit' : (temp >= 45 ? 'd-warn' : 'd-ok');
+        let cpuClass = cpu >= 85 ? 'd-crit' : (cpu >= 60 ? 'd-warn' : 'd-ok');
+        let ramClass = ram >= 80 ? 'd-crit' : (ram >= 50 ? 'd-warn' : 'd-ok');
+        let wifiClass = wifi <= 40 ? 'd-crit' : (wifi <= 70 ? 'd-warn' : 'd-ok');
+
+        tbody.innerHTML += `<tr>
+            <td class="d-id">#${String(row.id).padStart(4, '0')}</td>
+            <td>${fechaHora}</td>
+            <td class="${tempClass}">${temp.toFixed(1)}</td>
+            <td class="${cpuClass}">${cpu}</td>
+            <td>${c0}</td>
+            <td>${c1}</td>
+            <td class="${ramClass}">${ram.toFixed(1)}</td>
+            <td>${flash.toFixed(1)}</td>
+            <td class="${wifiClass}">${wifi}</td>
+        </tr>`;
+    });
+
+    renderPagination(totalPages, page);
+}
+
+// Función que se llama al pulsar el botón "BORRAR TODO"
+function confirmarBorradoDB() {
+    document.getElementById('confirmModalDB').style.display = 'flex';
+}
+
+// Cierra el modal sin hacer nada
+function cerrarModalDB() {
+    document.getElementById('confirmModalDB').style.display = 'none';
+}
+
+// Ejecuta la petición al ESP32 si el usuario confirma
+function ejecutarBorradoFinal() {
+    cerrarModalDB();
+    fetch('/delete-db')
+        .then(res => {
+            if (res.ok) {
+                // Recarga la página para mostrar la tabla vacía
+                location.reload(); 
+            }
+        })
+        .catch(err => console.error("Error al borrar:", err));
+}
+
+// LÓGICA REFINADA EXACTA: [Anterior] X Y Z [Siguiente]
+function renderPagination(totalPages, currentPage) {
+    const container = document.getElementById('pagination-container');
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let html = '<div class="pagination">';
+    
+    // Botón Anterior
+    html += `<button ${currentPage === 1 ? 'disabled' : ''} onclick="renderPage(${currentPage - 1})"><i data-lucide="chevron-left"></i> Anterior</button>`;
+
+    // Calculamos la ventana dinámica de 3 números
+    let startPage = currentPage - 1;
+    let endPage = currentPage + 1;
+
+    if (currentPage === 1) {
+        startPage = 1;
+        endPage = Math.min(totalPages, 3);
+    } else if (currentPage === totalPages) {
+        startPage = Math.max(1, totalPages - 2);
+        endPage = totalPages;
+    }
+
+    // Dibujamos EXCLUSIVAMENTE esos 3 números
+    for (let i = startPage; i <= endPage; i++) {
+        html += `<button class="${i === currentPage ? 'active' : ''}" onclick="renderPage(${i})">${i}</button>`;
+    }
+
+    // Botón Siguiente
+    html += `<button ${currentPage === totalPages ? 'disabled' : ''} onclick="renderPage(${currentPage + 1})">Siguiente <i data-lucide="chevron-right"></i></button>`;
+
+    html += '</div>';
+    container.innerHTML = html;
+    
+    lucide.createIcons();
+}
+
+window.addEventListener('load', () => {
+    cargarBaseDatos();
+    initWebSocket();
+});
+</script>
+
+<div class="modal-overlay" id="confirmModalDB">
+    <div class="modal-card">
+        <i data-lucide="alert-triangle" style="width: 55px; height: 55px; color: var(--crit); margin-bottom: 15px;"></i>
+        
+        <h3>¿BORRAR HISTORIAL?</h3>
+        <p>Esta acción eliminará todos los registros de la memoria Flash permanentemente.</p>
+        <div class="modal-btns">
+            <button class="modal-btn" style="background: var(--crit); color: #fff;" onclick="ejecutarBorradoFinal()">SÍ, BORRAR</button>
+            <button class="modal-btn" style="background: var(--border-color); color: var(--text-main);" onclick="cerrarModalDB()">CANCELAR</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
