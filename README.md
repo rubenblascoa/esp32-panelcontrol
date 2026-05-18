@@ -2,17 +2,21 @@
 
 <img src="https://cdn-icons-png.flaticon.com/512/8463/8463850.png" alt="ESP32 Blasco OS Logo" width="200" />
 
-<h1>
+<h3>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:cpu.svg?color=white">
-    <img src="https://api.iconify.design/lucide:cpu.svg?color=black" alt="Chip" width="32" align="center" />
+    <img src="https://api.iconify.design/lucide:cpu.svg?color=black" alt="Chip" width="28" align="center" />
   </picture> 
   ESP32 Blasco OS | Multi-Program
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:satellite-dish.svg?color=white">
-    <img src="https://api.iconify.design/lucide:satellite-dish.svg?color=black" alt="Antenna" width="32" align="center" />
+    <img src="https://api.iconify.design/lucide:satellite-dish.svg?color=black" alt="Antenna" width="28" align="center" />
   </picture>
-</h1>
+</h3>
+
+**Castellano** · [English](README.en.md) · [Français](README.fr.md)
+
+---
 
 **El entorno de ejecución multiprograma definitivo para ingeniería a bajo nivel.**
 
@@ -23,7 +27,7 @@
 
 **ESP32 Blasco** es una plataforma de ingeniería a bajo nivel y un entorno de ejecución multiprograma diseñado exclusivamente para el microcontrolador ESP32. Actúa como un pequeño "Sistema Operativo" accesible de forma remota a través de **Telnet (Wi-Fi)**. Permite encapsular y ejecutar múltiples proyectos de hardware en la misma placa, intercambiando entre ellos mediante una interfaz de terminal de texto puro (estilo retro/hacker), sin necesidad de usar cables ni volver a flashear el firmware.
 
-[Explorar el código](https://github.com/rubenblascoa/esp32-panelcontrol/tree/main/Arduino) · [Reportar un Bug](https://github.com/rubenblascoa/esp32-panelcontrol/issues) · [Solicitar una Mejora](https://github.com/rubenblascoa/esp32-panelcontrol/issues)
+[Explorar el código](https://github.com/rubenblascoa/esp32-panelcontrol) · [Reportar un Bug](https://github.com/rubenblascoa/esp32-panelcontrol/issues) · [Solicitar una Mejora](https://github.com/rubenblascoa/esp32-panelcontrol/issues)
 
 ---
 
@@ -128,9 +132,6 @@ Para que el proyecto compile correctamente y el panel web tenga espacio suficien
 | **Upload Speed** | `921600` |
 | **USB Mode** | `Hardware CDC and JTAG` |
 | **Zigbee Mode** | `Disabled` |
-
-> **IMPORTANTE:** > * **Partition Scheme:** Es vital seleccionar la partición `9.9MB FATFS`. Esto reserva casi 10MB de memoria exclusivamente para el sistema de archivos (LittleFS) donde se alojan el historial de telemetría y los archivos `.csv`.
-> * **PSRAM:** Asegúrate de marcar `OPI PSRAM` para desbloquear los 8MB de memoria RAM externa de la placa, necesarios para manejar los buffers del servidor web asíncrono sin cuelgues.
 
 ---
 
