@@ -14,181 +14,176 @@
   </picture>
 </h3>
 
-**Castellano** · [English](README.en.md) · [Français](README.fr.md)
+[Castellano](README.md) · **English** · [Français](README.fr.md)
 
 ---
 
-**El entorno de ejecución multiprograma definitivo para ingeniería a bajo nivel.**
+**The ultimate multi-program execution environment for low-level engineering.**
 
 [![GitHub stars](https://img.shields.io/github/stars/rubenblascoa/esp32-panelcontrol?style=flat-square&color=black)](https://github.com/rubenblascoa/esp32-panelcontrol/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/rubenblascoa/esp32-panelcontrol?style=flat-square&color=black)](https://github.com/rubenblascoa/esp32-panelcontrol/network/members)
 [![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-ESP32--S3-black?style=flat-square)](#)
 
-**ESP32 Blasco** es una plataforma de ingeniería a bajo nivel y un entorno de ejecución multiprograma diseñado exclusivamente para el microcontrolador ESP32. Actúa como un pequeño "Sistema Operativo" accesible de forma remota a través de **Telnet (Wi-Fi)**. Permite encapsular y ejecutar múltiples proyectos de hardware en la misma placa, intercambiando entre ellos mediante una interfaz de terminal de texto puro (estilo retro/hacker), sin necesidad de usar cables ni volver a flashear el firmware.
+**ESP32 Blasco** is a low-level engineering platform and a multi-program execution environment designed exclusively for the ESP32 microcontroller. It acts as a lightweight "Operating System" remotely accessible via **Telnet (Wi-Fi)**. It allows encapsulating and executing multiple hardware projects on the same board, switching between them through a pure text terminal interface (retro/hacker style), completely **wire-free** and **without re-flashing** the firmware.
 
-[Explorar el código](https://github.com/rubenblascoa/esp32-panelcontrol/tree/main/Code) · [Reportar un Bug](https://github.com/rubenblascoa/esp32-panelcontrol/issues) · [Solicitar una Mejora](https://github.com/rubenblascoa/esp32-panelcontrol/issues)
+[Explore the Code](https://github.com/rubenblascoa/esp32-panelcontrol/tree/main/Code) · [Report a Bug](https://github.com/rubenblascoa/esp32-panelcontrol/issues) · [Request an Improvement](https://github.com/rubenblascoa/esp32-panelcontrol/issues)
 
 ---
 
-### <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:zap.svg?color=white"><img src="https://api.iconify.design/lucide:zap.svg?color=black" width="22" align="center"></picture> Patrocinado por
-<a href="https://www.pcbway.es/"><img src="https://www.image2url.com/r2/default/images/1779125298301-64f9e1cb-9abb-470b-8871-f272256b85a6.png" alt="PCBWay Logo" width="280"></a>
+### <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:zap.svg?color=white"><img src="https://api.iconify.design/lucide:zap.svg?color=black" width="22" align="center"></picture> Sponsored by
+<a href="https://www.pcbway.com/"><img src="https://www.image2url.com/r2/default/images/1779125298301-64f9e1cb-9abb-470b-8871-f272256b85a6.png" alt="PCBWay Logo" width="280"></a>
 
-> **Hardware impulsado por PCBWay:** Para el desarrollo y despliegue del ESP32 Blasco OS, contar con un hardware robusto es indispensable. He confiado en PCBWay para la fabricación de mis placas debido a la excelente calidad de sus PCBs y la precisión en el ensamblaje (PCBA). En un entorno donde las conexiones SPI/I2C de alta frecuencia y la telemetría en tiempo real no pueden fallar, la fiabilidad de sus componentes ha sido clave para garantizar la estabilidad del sistema. Su plataforma es intuitiva, el servicio de atención al cliente es rápido y los tiempos de envío son inmejorables. Totalmente recomendado para cualquier ingeniero o maker que busque dar el salto a un hardware de calidad profesional.
+> **Hardware powered by PCBWay:** For the development and deployment of ESP32 Blasco OS, having robust hardware is indispensable. I have trusted PCBWay for manufacturing my boards due to the excellent quality of their PCBs and precision in assembly (PCBA). In an environment where high-frequency SPI/I2C connections and real-time telemetry cannot fail, the reliability of their components has been key to ensuring system stability. Their platform is intuitive, customer service is fast, and shipping times are unbeatable. Fully recommended for any engineer or maker looking to step up to professional-grade hardware.
 
 ---
 </div>
 
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:folder-tree.svg?color=white"><img src="https://api.iconify.design/lucide:folder-tree.svg?color=black" width="26" align="center"></picture> Arquitectura y Estructura Modular
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:folder-tree.svg?color=white"><img src="https://api.iconify.design/lucide:folder-tree.svg?color=black" width="26" align="center"></picture> Architecture and Modular Structure
 
-El firmware implementa una separación estricta de responsabilidades por hardware y software mediante un desacoplamiento multinúcleo asíncrono. A continuación se detalla el propósito y la lógica de ejecución interna de cada archivo del sistema:
+The firmware implements a strict separation of concerns between hardware and software through an asynchronous multi-core decoupling. The purpose and internal execution logic of each system file are detailed below:
 
-### 1. El Núcleo de Entrada y Orquestación
+### 1. Entry Core and Orchestration
 * **`main.ino`**
-  * **Propósito:** Es el punto de arranque físico del ESP32-S3 y el archivo principal que lee el Arduino IDE para compilar todo el directorio.
-  * **Lógica detallada:** Contiene un `loop()` vacío y un método `setup()` encargado de despertar los componentes en una cascada estricta (puerto serie, bus I2C, pantalla LCD, pines GPIO, módem Wi-Fi y sincronización NTP). Al finalizar, crea las dos tareas de FreeRTOS (`taskCore0` y `taskCore1`) pasándoles el control y se auto-destruye mediante `vTaskDelete(NULL)` para delegar el 100% de la CPU a los hilos asíncronos.
+  * **Purpose:** It is the physical entry point of the ESP32-S3 and the main file read by the Arduino IDE to compile the entire directory.
+  * **Detailed logic:** Contains an empty `loop()` and a `setup()` method responsible for waking up components in a strict cascade (serial port, I2C bus, LCD screen, GPIO pins, Wi-Fi modem, and NTP synchronization). Upon completion, it creates the two FreeRTOS tasks (`taskCore0` and `taskCore1`), passes control to them, and self-destructs using `vTaskDelete(NULL)` to delegate 100% of the CPU to the asynchronous processing threads.
 
-### 2. Configuración y Memoria Compartida
+### 2. Configuration and Shared Memory
 * **`config.h`**
-  * **Propósito:** Define las librerías del sistema, los mapas de pines físicos de la placa y declara de forma abstracta las variables compartidas por ambos núcleos.
-  * **Lógica detallada:** Alberga directivas `#include` y los `#define` del LED, del lector RFID y del sensor de ultrasonidos. Contiene las firmas de las variables globales precedidas por la palabra clave `extern`, indicando a otros archivos `.cpp` que la variable existe en la RAM común, evitando duplicidades y errores de enlace (*linker errors*).
+  * **Purpose:** Defines system libraries, physical pin mappings for the board, and abstractly declares variables shared by both cores.
+  * **Detailed logic:** Houses `#include` directives and `#define` statements for the LED, RFID reader, and ultrasonic sensor. It contains global variable signatures preceded by the `extern` keyword, indicating to other `.cpp` files that the variable exists in the common RAM, preventing duplicates and linker errors.
 * **`config.cpp`**
-  * **Propósito:** Funciona como el espacio físico real en la memoria RAM donde se crean e inicializan las variables del diccionario `config.h`.
-  * **Lógica detallada:** Se ejecuta una sola vez al arrancar para reservar el espacio exacto que el firmware requerirá. Almacena las credenciales Wi-Fi reales, la asignación de memoria para objetos del servidor web, las matrices fijas de las llaves MIFARE y los búfers de sincronización de comandos.
+  * **Purpose:** Acts as the actual physical space in RAM where the variables from the `config.h` dictionary are created and initialized.
+  * **Detailed logic:** Executes only once at startup to reserve the exact space required by the firmware. It stores the real Wi-Fi credentials, memory allocation for web server objects, fixed arrays for MIFARE keys, and command synchronization buffers.
 
-### 3. El Canal de Texto Duplicado
+### 3. Duplicated Text Channel
 * **`terminal.h`**
-  * **Propósito:** Define la estructura de la clase personalizada `TerminalHibrida`.
-  * **Lógica detallada:** Declara la clase heredando de la librería nativa `Print` de Arduino, lo que permite exponer los métodos tradicionales `.print()` y `.println()`, además de los controladores de bloques dinámicos (`iniciarBloque()`, `enviarBloque()`).
+  * **Purpose:** Defines the structure of the custom `TerminalHibrida` class.
+  * **Detailed logic:** Declares the class inheriting from the native Arduino `Print` library, exposing traditional `.print()` and `.println()` methods, as well as dynamic block controllers (`iniciarBloque()`, `enviarBloque()`).
 * **`terminal.cpp`**
-  * **Propósito:** Controla el algoritmo asíncrono que duplica los mensajes de texto en tiempo real.
-  * **Lógica detallada:** Al llamar a `Terminal.println()`, intercepta los caracteres mandándolos primero por el socket TCP abierto hacia Telnet (Putty). Paralelamente, si hay un navegador web escuchando, acumula los caracteres en un string dinámico (`bufferWeb`) y los despacha al WebSocket al encontrar un salto de línea `\n` (salvo en Modo Bloque). Cuenta con una regla de seguridad que vacía el búfer si supera los 200 caracteres para evitar fugas de memoria.
+  * **Purpose:** Controls the asynchronous algorithm that duplicates text messages in real time.
+  * **Detailed logic:** When calling `Terminal.println()`, it intercepts characters, sending them first over the open TCP socket to Telnet (Putty). In parallel, if a web browser is listening, it accumulates characters in a dynamic string (`bufferWeb`) and dispatches them to the WebSocket when finding a newline `\n` (unless in Block Mode). It features a security rule that flushes the buffer if it exceeds 200 characters to prevent memory leaks.
 
-### 4. Interfaz Gráfica y Frontend
+### 4. Graphical Interface and Frontend
 * **`web_pages.h`**
-  * **Propósito:** Declara tres constantes de texto globales que contienen los archivos estructurados del frontend.
-  * **Lógica detallada:** Expone las referencias a `index_html`, `db_html` y `login_html` acompañadas del modificador de almacenamiento `PROGMEM`.
+  * **Purpose:** Declares three global text constants containing the structured frontend files.
+  * **Detailed logic:** Exposes references to `index_html`, `db_html`, and `login_html` accompanied by the `PROGMEM` storage modifier.
 * **`web_pages.cpp`**
-  * **Propósito:** Almacena de forma exacta y masiva todo el código HTML, CSS y JavaScript de los tres paneles de control web.
-  * **Lógica detallada:** Obliga al ESP32-S3 mediante la directiva `PROGMEM` a guardar estas páginas en los transistores inalterables de la memoria Flash (ROM). Si se alojaran en la RAM convencional, consumirían más del 80% del Heap dinámico, provocando reinicios por falta de memoria al conectar usuarios.
+  * **Purpose:** Stores the exact and massive HTML, CSS, and JavaScript code for the three web control panels.
+  * **Detailed logic:** Forces the ESP32-S3 via the `PROGMEM` directive to save these pages directly into the unalterable Flash memory (ROM) transistors. If hosted in conventional RAM, they would consume over 80% of the dynamic Heap, causing memory exhaustion reboots when users connect.
 
-### 5. Enrutamiento y Seguridad de Red
+### 5. Routing and Network Security
 * **`web_server.h`**
-  * **Propósito:** Define las funciones del servidor HTTP asíncrono y el callback del WebSocket que procesará las tramas web.
+  * **Purpose:** Defines the asynchronous HTTP server functions and the WebSocket callback that processes web frames.
 * **`web_server.cpp`**
-  * **Propósito:** Funciona como el despachador de tráfico de red asignado al Core 0.
-  * **Lógica detallada:**
-    * *Seguridad:* Ejecuta la función `estaLogueado()`, inspeccionando las cabeceras HTTP en busca de la cookie `ZENITH_SESSION` vinculada al token aleatorio de la RAM.
-    * *Rutas HTTP:* Maneja las peticiones de `/login` (creando la cookie con flags `HttpOnly` y `SameSite=Strict`), `/logout` (destruye la sesión), `/datos.csv` (realiza un streaming directo del archivo histórico desde LittleFS al navegador) y `/delete-db` (borra el archivo físico de logs).
+  * **Purpose:** Acts as the network traffic dispatcher assigned to Core 0.
+  * **Detailed logic:**
+    * *Security:* Executes the `estaLogueado()` function, inspecting HTTP headers for the `ZENITH_SESSION` cookie linked to the random token in RAM.
+    * *HTTP Routes:* Handles requests for `/login` (creating the cookie with `HttpOnly` and `SameSite=Strict` flags), `/logout` (destroys the session), `/datos.csv` (streams the historical file directly from LittleFS to the browser), and `/delete-db` (deletes the physical log file).
     * *WebSocket (onWsEvent):* Captura la trama de red en crudo cuando un usuario escribe en la consola del navegador; si recibe `"reboot"` reinicia la placa, y si recibe comandos de control, los copia en `entradaWeb` e iza la bandera `hayEntradaWeb` para avisar al Core 1.
 
-### 6. Controladores de Sensores (Hardware)
+### 6. Sensor Controllers (Hardware)
 * **`nfc.h` / `nfc.cpp`**
-  * **Propósito:** Gestiona los ciclos de lectura y clonación por proximidad mediante el bus físico SPI.
-  * **Lógica detallada:** Cuando el Core 1 le da paso, interroga de forma continua al hardware MFRC522. En modo lectura, realiza un desafío criptográfico al tag físico usando contraseñas MIFARE; si responde correctamente, vuelca el Bloque 0 en la variable `bloqueEscaneado`. En modo escritura, inyecta esa matriz de datos en una tarjeta regrabable virgen.
+  * **Purpose:** Manages proximity reading and cloning cycles via the physical SPI bus.
+  * **Detailed logic:** When Core 1 grants access, it continuously interrogates the MFRC522 hardware. In read mode, it performs a cryptographic challenge to the physical tag using MIFARE passwords; if it responds correctly, it dumps Block 0 into the `bloqueEscaneado` variable. In write mode, it injects this data matrix into a blank rewritable card.
 * **`ultrasonidos.h` / `ultrasonidos.cpp`**
-  * **Propósito:** Mide el espacio euclidiano utilizando rebotes acústicos de alta frecuencia.
-  * **Lógica detallada:** Coloca a potencial cero el pin `TRIG_PIN`, emite un pulso ultrasónico manteniendo el pin en estado alto durante exactamente 10 microsegundos y lo corta. Inmediatamente después, ejecuta una llamada `pulseIn` de alta precisión en el pin `ECHO_PIN` con un tiempo de gracia de 30ms. Si el eco regresa, calcula la distancia en centímetros dividiendo el tiempo por dos y aplicando la velocidad del sonido.
+  * **Purpose:** Measures Euclidean space using high-frequency acoustic bounces.
+  * **Detailed logic:** Drives the `TRIG_PIN` to zero potential, emits an ultrasonic pulse by holding the pin high for exactly 10 microseconds, and cuts it off. Immediately after, it executes a high-precision `pulseIn` call on the `ECHO_PIN` with a 30ms grace period. If the echo returns, it calculates the distance in centimeters by dividing the time by two and applying the speed of sound.
 
-### 7. Utilidades e Histórico en Disco
+### 7. Utilities and Disk Logs
 * **`utils.h` / `utils.cpp`**
-  * **Propósito:** Ofrece soporte lógico de backend al firmware para estadísticas, tiempo y manejo del bus I2C.
-  * **Lógica detallada:**
-    * `calcularUsoCPU()`: Estima de forma matemática la carga de estrés heurístico de los núcleos según las tareas que estén activas.
-    * `guardarEnHistorial()`: Abre el archivo `/datos.csv` en LittleFS y añade una línea estructurada con la fecha, temperatura interna del chip, cargas dinámicas de CPU, ocupación de RAM/Flash y nivel de señal Wi-Fi.
-    * `actualizarLCD()`: Controla la pantalla física mediante la llamada `xSemaphoreTake(i2cMutex)` para bloquear el bus I2C antes de escribir, evitando colisiones de datos, renderizando barras de progreso visuales (`|====  |`) y rotando automáticamente cada 3 segundos entre 4 páginas de telemetría.
+  * **Purpose:** Provides backend logical support to the firmware for statistics, time, and I2C bus management.
+  * **Detailed logic:**
+    * `calcularUsoCPU()`: Mathematically estimates the heuristic stress load of the cores based on active tasks.
+    * `guardarEnHistorial()`: Opens the `/datos.csv` file in LittleFS and appends a structured text line with the date, internal chip temperature, dynamic CPU loads, RAM/Flash occupancy, and Wi-Fi signal level.
+    * `actualizarLCD()`: Controls the physical screen via the `xSemaphoreTake(i2cMutex)` call to lock the I2C bus before writing, avoiding data collisions, rendering visual progress bars (`|====  |`), and automatically rotating every 3 seconds among 4 telemetry pages.
 
-### 8. Capa de Texto (Interfaz CLI)
+### 8. Text Layer (CLI Interface)
 * **`menus.h` / `menus.cpp`**
-  * **Propósito:** Contiene el diseño visual en texto plano y el árbol de navegación jerárquico del sistema operativo.
-  * **Lógica detallada:** Gestiona lo que el usuario visualiza al conectarse por terminal. Llama a `Terminal.iniciarBloque()` para retener los caracteres, imprime los marcos decorativos de la consola y concatena el cálculo en tiempo real de la PSRAM, velocidad del procesador y Uptime antes de enviar el bloque unificado a la red. Alberga las funciones que modifican la variable `programaActivo` para saltar de menú.
+  * **Purpose:** Contains the visual layout in plain text and the hierarchical navigation tree of the operating system.
+  * **Detailed logic:** Manages what the user visualizes when connecting via terminal. Calls `Terminal.iniciarBloque()` to retain characters, prints the console's decorative frames, and concatenates the real-time calculation of PSRAM, processor speed, and Uptime before sending the unified block to the network. Houses the functions that modify the `programaActivo` variable to switch menus.
 
-### 9. El Planificador Multinúcleo (FreeRTOS)
+### 9. Multi-Core Scheduler (FreeRTOS)
 * **`tareas.h` / `tareas.cpp`**
-  * **Propósito:** Alberga los dos bucles infinitos distribuidos por hardware que sustituyen al `loop` convencional de Arduino.
-  * **Lógica detallada:**
-    * `taskCore0` (Asignado al Núcleo 0): Monta el sistema de archivos de LittleFS (formateándolo si detecta corrupción). Procesa las conexiones de red entrantes, gestiona las actualizaciones OTA, ejecuta el reloj síncrono NTP, dispara el cronjob de base de datos cada 2 horas y controla el parpadeo estroboscópico del LED de estado.
-    * `taskCore1` (Asignado al Núcleo 1): Monitorea en paralelo si ha entrado algún comando por Putty o WebSockets. Dependiendo del estado de `programaActivo`, ejecuta de forma asíncrona la escucha NFC en bus SPI o realiza disparos de ultrasonidos a una frecuencia exacta de 1Hz (cada 1000ms) sin interferir jamás con los procesos de red del otro núcleo.
-   
----
-
-
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:list.svg?color=white"><img src="https://api.iconify.design/lucide:list.svg?color=black" width="26" align="center"></picture> Características Principales
-
-* **Control 100% Inalámbrico:** Acceso completo a la interfaz de usuario mediante cualquier cliente Telnet (Puerto 23) a través de la red Wi-Fi local.
-* **Actualizaciones OTA (Over-The-Air):** Soporte integrado para inyectar nuevo código de forma remota sin conexión USB.
-* **Telemetría Avanzada en Tiempo Real:** Monitorización del sistema que incluye:
-  * Consumo de RAM (Total, Usada, Libre).
-  * Estado de la Memoria Flash (Almacenamiento).
-  * Temperatura de los núcleos del silicio (`Temp Core`).
-  * Frecuencia del Procesador (`Vel. CPU`).
-  * Tiempo de Actividad Ininterrumpida (`Uptime`).
-* **Arquitectura Modular ("Cajones"):** El código separa el menú maestro de los subprogramas, permitiendo añadir nuevos sensores o proyectos sin romper el código de los demás.
+  * **Purpose:** Houses the two hardware-distributed infinite loops that replace the conventional Arduino `loop`.
+  * **Detailed logic:**
+    * `taskCore0` (Assigned to Core 0): Mounts the LittleFS file system (formatting it if corruption is detected). Processes incoming network connections, manages OTA updates, runs the synchronous NTP clock, triggers the database cronjob every 2 hours, and controls the stroboscopic flashing of the status LED.
+    * `taskCore1` (Assigned to Core 1): Monitored in parallel if any command has entered via Putty or WebSockets. Depending on the state of `programaActivo`, it asynchronously executes NFC listening on the SPI bus or triggers ultrasonic pings at an exact frequency of 1Hz (every 1000ms) without ever interfering with the other core's network processes.
 
 ---
 
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:git-compare.svg?color=white"><img src="https://api.iconify.design/lucide:git-compare.svg?color=black" width="26" align="center"></picture> El Problema vs La Solución
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:list.svg?color=white"><img src="https://api.iconify.design/lucide:list.svg?color=black" width="26" align="center"></picture> Main Features
 
-Desarrollar y probar múltiples proyectos de hardware en un solo microcontrolador suele ser un caos: cables USB constantes, flasheos interminables y código espagueti al intentar juntar todo. 
+* **100% Wireless Control:** Full access to the user interface using any Telnet client (Port 23) via the local Wi-Fi network.
+* **OTA (Over-The-Air) Updates:** Built-in support to inject new code remotely without a USB connection.
+* **Advanced Real-Time Telemetry:** System monitoring including:
+  * RAM consumption (Total, Used, Free).
+  * Flash Memory state (Storage).
+  * Silicon core temperature (`Core Temp`).
+  * Processor Frequency (`CPU Speed`).
+  * Uninterrupted Activity Time (`Uptime`).
+* **Modular Architecture ("Drawers"):** The code separates the master menu from subprograms, allowing the addition of new sensors or projects without breaking others' code.
 
-| Sin Blasco OS | Con Blasco OS |
+---
+
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:git-compare.svg?color=white"><img src="https://api.iconify.design/lucide:git-compare.svg?color=black" width="26" align="center"></picture> The Problem vs The Solution
+
+Developing and testing multiple hardware projects on a single microcontroller is usually a mess. 
+
+| Without Blasco OS | With Blasco OS |
 | :--- | :--- |
-| Conexión USB obligatoria para probar | **100% Inalámbrico** vía Telnet |
-| Flashear el firmware en cada cambio | **Intercambio en caliente** entre módulos |
-| Monitorización básica por Serial | **Telemetría avanzada** (RAM, Flash, Temp, CPU) |
-| Actualizaciones por cable | **Soporte OTA** (Over-The-Air) |
-| Proyectos acoplados que rompen el código | **Arquitectura Modular** ("Cajones" independientes) |
+| Mandatory USB connection to test | **100% Wireless** via Telnet |
+| Flash firmware on every change | **Hot-swapping** between modules |
+| Basic monitoring via Serial | **Advanced telemetry** (RAM, Flash, Temp, CPU) |
+| Updates via cable | **OTA Support** (Over-The-Air) |
+| Coupled projects that break code | **Modular Architecture** (Independent "Drawers") |
 
 ---
 
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:blocks.svg?color=white"><img src="https://api.iconify.design/lucide:blocks.svg?color=black" width="26" align="center"></picture> Módulos Activos
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:blocks.svg?color=white"><img src="https://api.iconify.design/lucide:blocks.svg?color=black" width="26" align="center"></picture> Active Modules
 
-Actualmente, el sistema operativo cuenta con tres proyectos principales integrados:
+Currently, the operating system has three main integrated projects:
 
-### 1. Estación de Clonación NFC Pro (V14)
-Un módulo avanzado de auditoría y clonación RFID utilizando el hardware **MFRC522**.
-* **Lectura Profunda:** Extrae toda la información de la tarjeta (incluyendo el Bloque 0 / Sector de máxima seguridad) y la guarda en la memoria RAM del ESP32.
-* **Clonación Física:** Permite inyectar datos en el Sector 0 de tarjetas regrabables (*Magic Cards / Gen2 / CUID*).
-* **Multi-Origen:** Puedes elegir clonar la tarjeta que tienes guardada en la RAM, inyectar una llave maestra pre-programada (Hardcoded) o dictar un código hexadecimal de 32 caracteres manualmente desde el teclado.
+### 1. NFC Cloning Station Pro (V14)
+An advanced RFID auditing and cloning module using **MFRC522** hardware.
+* **Deep Reading:** Extracts all information from the card and saves it into the ESP32 RAM.
+* **Physical Cloning:** Allows injecting data into Sector 0 of rewritable cards.
+* **Multi-Source:** Clone from RAM, inject a Hardcoded master key, or type a hex code manually.
 
-### 2. Radar Ultrasónico (V3)
-Módulo de telemetría física utilizando el sensor de distancia **HC-SR04**.
-* **Ejecución Asíncrona:** Flujo no-bloqueante; el ESP32 sigue atendiendo las peticiones de red y el servidor web mientras realiza el muestreo de distancia.
-* **Lectura en Bucle:** Refresco cíclico configurable con lógica de tolerancia a fallos térmicos y filtrado de rebotes erróneos (Timeout > 400cm / "Fuera de rango").
+### 2. Ultrasonic Radar (V3)
+Physical telemetry module using the **HC-SR04** distance sensor.
+* **Asynchronous Execution:** Non-blocking flow; handles network requests and web server concurrently.
+* **Loop Reading:** Configurable cyclical refresh with fault-tolerant thermal logic.
 
-### 3. Monitor de Temperatura y Humedad Ambiental (V1)
-Módulo de adquisición de datos climáticos locales integrado en el ecosistema.
-* **Muestreo de Precisión:** Telemetría continua de humedad relativa y temperatura ambiente.
-* **Gestión de Datos:** Sincronización automática de lecturas históricas para su almacenamiento estructurado dentro del sistema de archivos interno de la base de datos.
-
----
-
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:hard-drive.svg?color=white"><img src="https://api.iconify.design/lucide:hard-drive.svg?color=black" width="26" align="center"></picture> Hardware Requerido e Instalación
-
-* **Placa Base:** ESP32 (S3 N16R8 o similar).
-* **Módulo NFC:** Lector RFID MFRC522 (Conectado por bus SPI: SDA->D5, RST->D21).
-* **Módulo Distancia:** Sensor HC-SR04 (TRIG->D12, ECHO->D14).
-
-### Puesta en Marcha:
-1. Configura tus credenciales Wi-Fi (`ssid` y `password`) en el código fuente.
-2. Flashea el código por USB la primera vez mediante Arduino IDE.
-3. Abre la consola Serial a `115200 baudios` para descubrir la IP local asignada.
-4. Abre el navegador y busca dicha IP local.
-5. ¡Disfruta del entorno!
+### 3. Ambient Temperature and Humidity Monitor (V1)
+Integrated local climate data acquisition module.
+* **Precision Sampling:** Continuous telemetry of relative humidity and ambient temperature.
+* **Data Management:** Automatic synchronization of historical readings.
 
 ---
 
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:settings.svg?color=white"><img src="https://api.iconify.design/lucide:settings.svg?color=black" width="26" align="center"></picture> Configuración de Compilación (Arduino IDE)
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:hard-drive.svg?color=white"><img src="https://api.iconify.design/lucide:hard-drive.svg?color=black" width="26" align="center"></picture> Required Hardware and Installation
 
-Para que el proyecto compile correctamente y el panel web tenga espacio suficiente para la base de datos (LittleFS), es **obligatorio** usar la siguiente configuración en el menú **Herramientas (Tools)** de Arduino IDE. 
+* **Base Board:** ESP32 (S3 N16R8 or similar).
+* **NFC Module:** MFRC522 RFID Reader (Connected via SPI bus: SDA->D5, RST->D21).
+* **Distance Module:** HC-SR04 Sensor (TRIG->D12, ECHO->D14).
 
-> **Acceso al sistema:** El usuario y contraseña establecidos por defecto son **`admin` / `blasco`**. Dicha combinación es modificable en el archivo .ino principal.
+### Deployment:
+1. Configure your Wi-Fi credentials (`ssid` and `password`) in the source code.
+2. Flash the code via USB for the first time using Arduino IDE.
+3. Open the Serial console at `115200 baud` to discover the assigned local IP.
+4. Open your web browser and navigate to that local IP.
+5. Enjoy the environment!
 
-*Esta configuración está optimizada para placas **ESP32-S3 (N16R8)** con 16MB de Flash y 8MB de PSRAM.*
+---
 
-| Parámetro de Configuración | Valor Exacto Requerido |
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:settings.svg?color=white"><img src="https://api.iconify.design/lucide:settings.svg?color=black" width="26" align="center"></picture> Compilation Configuration (Arduino IDE)
+
+> **System Access:** The default username and password are set to **`admin` / `blasco`**. This combination can be modified in the main .ino file.
+
+| Configuration Parameter | Exact Required Value |
 | :--- | :--- |
-| **Placa (Board)** | `ESP32S3 Dev Module` |
+| **Board** | `ESP32S3 Dev Module` |
 | **USB CDC On Boot** | `Enabled` |
 | **CPU Frequency** | `240MHz (WiFi)` |
 | **Core Debug Level** | `None` |
@@ -209,55 +204,52 @@ Para que el proyecto compile correctamente y el panel web tenga espacio suficien
 
 ---
 
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:monitor.svg?color=white"><img src="https://api.iconify.design/lucide:monitor.svg?color=black" width="26" align="center"></picture> Interfaz y Telemetría
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:monitor.svg?color=white"><img src="https://api.iconify.design/lucide:monitor.svg?color=black" width="26" align="center"></picture> Interface and Telemetry
 
-A continuación se muestra el entorno de ejecución del Sistema Operativo. Haz clic en los menús desplegables para ver las capturas de pantalla de la interfaz completa.
+Below is the execution environment of the Operating System. Click on the dropdown menus to expand and view the full interface screenshots.
 
 <details>
-<summary><b>Panel Control (Telemetría y ejecución en vivo)</b></summary>
+<summary><b>Control Panel (Telemetry and live execution)</b></summary>
 <br>
 
-<p><i>Versión Oscura</i></p>
+<p><i>Dark Theme</i></p>
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/db980fe4-600b-43e1-b8bb-b9c366eb26ee" />
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/eef43556-0c27-49e9-8d07-eda9577c5c75" />
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/4f032878-b0b0-406b-81f2-786c12560149" />
 
-<p><i>Versión Blanca</i></p>
+<p><i>Light Theme</i></p>
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/55b18cca-1077-499a-81ed-d8acf6d66cc4" />
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/6c5cba54-ecff-498f-835e-130887f2bf8b" />
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/bbca1743-3a4e-4fa7-9f1b-6b4601bce200" />
 </details>
 
 <details>
-<summary><b>Base de Datos</b></summary>
+<summary><b>Database Management</b></summary>
 <br>
 
-<p><i>Versión Oscura</i></p>
+<p><i>Dark Theme</i></p>
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/15c40684-d907-4bca-9387-72960a42e2ad" />
 
-<p><i>Versión Blanca</i></p>
+<p><i>Light Theme</i></p>
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/59ef1539-4c79-4654-aa02-3c0c15b51490" />
 </details>
 
 <details>
-<summary><b>Login</b></summary>
+<summary><b>Authentication Login</b></summary>
 <br>
 
-<p><i>Versión Oscura</i></p>
+<p><i>Dark Theme</i></p>
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/be11690f-6344-40b0-aa56-73fbde6f885b" />
 
-<p><i>Versión Blanca</i></p>
+<p><i>Light Theme</i></p>
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/72f2c465-19c3-456b-9e2b-9e858a1d2273" />
 </details>
 
 ---
 
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:user.svg?color=white"><img src="https://api.iconify.design/lucide:user.svg?color=black" width="26" align="center"></picture> Contacta conmigo
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:user.svg?color=white"><img src="https://api.iconify.design/lucide:user.svg?color=black" width="26" align="center"></picture> Contact Me
 
-Desarrollado por **Ruben Blasco Armengod**.
+Developed with passion by **Ruben Blasco Armengod**.
 
-Si tienes alguna duda, sugerencia o propuesta de colaboración, no dudes en ponerte en contacto conmigo:
 * **GitHub:** [rubenblascoa](https://github.com/rubenblascoa)
 * **Email:** rubenblascoarmengod@gmail.com
-
-También puedes abrir un *issue* en este repositorio y te responderé lo antes posible.
