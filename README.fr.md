@@ -14,7 +14,7 @@
   </picture>
 </h3>
 
-[Castellano](README.md) · [English](README.en.md) · **Français**
+[Castellano](README.es.md) · [English](README.md) · **Français**
 
 ---
 
