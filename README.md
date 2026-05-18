@@ -28,16 +28,9 @@
 ---
 
 ### <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:zap.svg?color=white"><img src="https://api.iconify.design/lucide:zap.svg?color=black" width="22" align="center"></picture> Patrocinado por
+<a href="https://www.pcbway.es/"><img src="https://www.image2url.com/r2/default/images/1779125298301-64f9e1cb-9abb-470b-8871-f272256b85a6.png" alt="PCBWay Logo" width="280"></a>
 
-<br>
-
-<a href="https://www.pcbway.es/">
-  <img src="https://s3-eu-west-1.amazonaws.com/tpd/logos/54695d4a00006400057b939d/0x0.png" alt="PCBWay Logo" width="300">
-</a>
-
-<br>
-
-> **Hardware impulsado por PCBWay:** > *[ESPACIO PARA TU RESEÑA: Haz doble clic aquí y escribe tus palabras sobre los productos de PCBWay. Ejemplo: "Para el desarrollo del hardware de este proyecto y garantizar la máxima estabilidad en las conexiones SPI/I2C de los módulos, confío plenamente en PCBWay. La calidad de sus placas de circuito impreso (PCBs), la rapidez de envío y su excelente servicio han sido fundamentales para llevar este diseño al siguiente nivel. Totalmente recomendados."]*
+> **Hardware impulsado por PCBWay:** Para el desarrollo y despliegue del ESP32 Blasco OS, contar con un hardware robusto es indispensable. He confiado en PCBWay para la fabricación de mis placas debido a la excelente calidad de sus PCBs y la precisión en el ensamblaje (PCBA). En un entorno donde las conexiones SPI/I2C de alta frecuencia y la telemetría en tiempo real no pueden fallar, la fiabilidad de sus componentes ha sido clave para garantizar la estabilidad del sistema. Su plataforma es intuitiva, el servicio de atención al cliente es rápido y los tiempos de envío son inmejorables. Totalmente recomendado para cualquier ingeniero o maker que busque dar el salto a un hardware de calidad profesional.
 
 ---
 </div>
