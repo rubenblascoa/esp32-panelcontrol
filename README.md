@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://cdn-icons-png.flaticon.com/512/8463/8463850.png" alt="ESP32 Blasco OS Logo" width="320" />
+<img src="https://cdn-icons-png.flaticon.com/512/8463/8463850.png" alt="ESP32 Blasco OS Logo" width="200" />
 
 <h1>
   <picture>
