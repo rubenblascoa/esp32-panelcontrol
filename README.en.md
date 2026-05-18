@@ -39,6 +39,79 @@
 ---
 </div>
 
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:folder-tree.svg?color=white"><img src="https://api.iconify.design/lucide:folder-tree.svg?color=black" width="26" align="center"></picture> Architecture and Modular Structure
+
+The firmware implements a strict separation of concerns between hardware and software through an asynchronous multi-core decoupling. The purpose and internal execution logic of each system file are detailed below:
+
+### 1. Entry Core and Orchestration
+* **`main.ino`**
+  * **Purpose:** It is the physical entry point of the ESP32-S3 and the main file read by the Arduino IDE to compile the entire directory.
+  * **Detailed logic:** Contains an empty `loop()` and a `setup()` method responsible for waking up components in a strict cascade (serial port, I2C bus, LCD screen, GPIO pins, Wi-Fi modem, and NTP synchronization). Upon completion, it creates the two FreeRTOS tasks (`taskCore0` and `taskCore1`), passes control to them, and self-destructs using `vTaskDelete(NULL)` to delegate 100% of the CPU to the asynchronous processing threads.
+
+### 2. Configuration and Shared Memory
+* **`config.h`**
+  * **Purpose:** Defines system libraries, physical pin mappings for the board, and abstractly declares variables shared by both cores.
+  * **Detailed logic:** Houses `#include` directives and `#define` statements for the LED, RFID reader, and ultrasonic sensor. It contains global variable signatures preceded by the `extern` keyword, indicating to other `.cpp` files that the variable exists in the common RAM, preventing duplicates and linker errors.
+* **`config.cpp`**
+  * **Purpose:** Acts as the actual physical space in RAM where the variables from the `config.h` dictionary are created and initialized.
+  * **Detailed logic:** Executes only once at startup to reserve the exact space required by the firmware. It stores the real Wi-Fi credentials, memory allocation for web server objects, fixed arrays for MIFARE keys, and command synchronization buffers.
+
+### 3. Duplicated Text Channel
+* **`terminal.h`**
+  * **Purpose:** Defines the structure of the custom `TerminalHibrida` class.
+  * **Detailed logic:** Declares the class inheriting from the native Arduino `Print` library, exposing traditional `.print()` and `.println()` methods, as well as dynamic block controllers (`iniciarBloque()`, `enviarBloque()`).
+* **`terminal.cpp`**
+  * **Purpose:** Controls the asynchronous algorithm that duplicates text messages in real time.
+  * **Detailed logic:** When calling `Terminal.println()`, it intercepts characters, sending them first over the open TCP socket to Telnet (Putty). In parallel, if a web browser is listening, it accumulates characters in a dynamic string (`bufferWeb`) and dispatches them to the WebSocket when finding a newline `\n` (unless in Block Mode). It features a security rule that flushes the buffer if it exceeds 200 characters to prevent memory leaks.
+
+### 4. Graphical Interface and Frontend
+* **`web_pages.h`**
+  * **Purpose:** Declares three global text constants containing the structured frontend files.
+  * **Detailed logic:** Exposes references to `index_html`, `db_html`, and `login_html` accompanied by the `PROGMEM` storage modifier.
+* **`web_pages.cpp`**
+  * **Purpose:** Stores the exact and massive HTML, CSS, and JavaScript code for the three web control panels.
+  * **Detailed logic:** Forces the ESP32-S3 via the `PROGMEM` directive to save these pages directly into the unalterable Flash memory (ROM) transistors. If hosted in conventional RAM, they would consume over 80% of the dynamic Heap, causing memory exhaustion reboots when users connect.
+
+### 5. Routing and Network Security
+* **`web_server.h`**
+  * **Purpose:** Defines the asynchronous HTTP server functions and the WebSocket callback that processes web frames.
+* **`web_server.cpp`**
+  * **Purpose:** Acts as the network traffic dispatcher assigned to Core 0.
+  * **Detailed logic:**
+    * *Security:* Executes the `estaLogueado()` function, inspecting HTTP headers for the `ZENITH_SESSION` cookie linked to the random token in RAM.
+    * *HTTP Routes:* Handles requests for `/login` (creating the cookie with `HttpOnly` and `SameSite=Strict` flags), `/logout` (destroys the session), `/datos.csv` (streams the historical file directly from LittleFS to the browser), and `/delete-db` (deletes the physical log file).
+    * *WebSocket (onWsEvent):* Captura la trama de red en crudo cuando un usuario escribe en la consola del navegador; si recibe `"reboot"` reinicia la placa, y si recibe comandos de control, los copia en `entradaWeb` e iza la bandera `hayEntradaWeb` para avisar al Core 1.
+
+### 6. Sensor Controllers (Hardware)
+* **`nfc.h` / `nfc.cpp`**
+  * **Purpose:** Manages proximity reading and cloning cycles via the physical SPI bus.
+  * **Detailed logic:** When Core 1 grants access, it continuously interrogates the MFRC522 hardware. In read mode, it performs a cryptographic challenge to the physical tag using MIFARE passwords; if it responds correctly, it dumps Block 0 into the `bloqueEscaneado` variable. In write mode, it injects this data matrix into a blank rewritable card.
+* **`ultrasonidos.h` / `ultrasonidos.cpp`**
+  * **Purpose:** Measures Euclidean space using high-frequency acoustic bounces.
+  * **Detailed logic:** Drives the `TRIG_PIN` to zero potential, emits an ultrasonic pulse by holding the pin high for exactly 10 microseconds, and cuts it off. Immediately after, it executes a high-precision `pulseIn` call on the `ECHO_PIN` with a 30ms grace period. If the echo returns, it calculates the distance in centimeters by dividing the time by two and applying the speed of sound.
+
+### 7. Utilities and Disk Logs
+* **`utils.h` / `utils.cpp`**
+  * **Purpose:** Provides backend logical support to the firmware for statistics, time, and I2C bus management.
+  * **Detailed logic:**
+    * `calcularUsoCPU()`: Mathematically estimates the heuristic stress load of the cores based on active tasks.
+    * `guardarEnHistorial()`: Opens the `/datos.csv` file in LittleFS and appends a structured text line with the date, internal chip temperature, dynamic CPU loads, RAM/Flash occupancy, and Wi-Fi signal level.
+    * `actualizarLCD()`: Controls the physical screen via the `xSemaphoreTake(i2cMutex)` call to lock the I2C bus before writing, avoiding data collisions, rendering visual progress bars (`|====  |`), and automatically rotating every 3 seconds among 4 telemetry pages.
+
+### 8. Text Layer (CLI Interface)
+* **`menus.h` / `menus.cpp`**
+  * **Purpose:** Contains the visual layout in plain text and the hierarchical navigation tree of the operating system.
+  * **Detailed logic:** Manages what the user visualizes when connecting via terminal. Calls `Terminal.iniciarBloque()` to retain characters, prints the console's decorative frames, and concatenates the real-time calculation of PSRAM, processor speed, and Uptime before sending the unified block to the network. Houses the functions that modify the `programaActivo` variable to switch menus.
+
+### 9. Multi-Core Scheduler (FreeRTOS)
+* **`tareas.h` / `tareas.cpp`**
+  * **Purpose:** Houses the two hardware-distributed infinite loops that replace the conventional Arduino `loop`.
+  * **Detailed logic:**
+    * `taskCore0` (Assigned to Core 0): Mounts the LittleFS file system (formatting it if corruption is detected). Processes incoming network connections, manages OTA updates, runs the synchronous NTP clock, triggers the database cronjob every 2 hours, and controls the stroboscopic flashing of the status LED.
+    * `taskCore1` (Assigned to Core 1): Monitored in parallel if any command has entered via Putty or WebSockets. Depending on the state of `programaActivo`, it asynchronously executes NFC listening on the SPI bus or triggers ultrasonic pings at an exact frequency of 1Hz (every 1000ms) without ever interfering with the other core's network processes.
+
+---
+
 ## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:list.svg?color=white"><img src="https://api.iconify.design/lucide:list.svg?color=black" width="26" align="center"></picture> Main Features
 
 * **100% Wireless Control:** Full access to the user interface using any Telnet client (Port 23) via the local Wi-Fi network.
