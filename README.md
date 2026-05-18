@@ -22,6 +22,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/rubenblascoa/esp32-panelcontrol?style=flat-square&color=black)](https://github.com/rubenblascoa/esp32-panelcontrol/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/rubenblascoa/esp32-panelcontrol?style=flat-square&color=black)](https://github.com/rubenblascoa/esp32-panelcontrol/network/members)
+![Visitas](https://komarev.com/ghpvc/?username=rubenblascoa&repo=esp32-panelcontrol&icon=0&color=121011&style=flat-square)
 [![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-ESP32--S3-black?style=flat-square)](#)
 
