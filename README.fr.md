@@ -27,7 +27,7 @@
 
 **ESP32 Blasco** est une plateforme d'ingénierie bas niveau et un environnement d'exécution multi-programme conçu exclusivement pour le microcontrôleur ESP32. Il agit comme un léger "Système d'Exploitation" accessible à distance via **Telnet (Wi-Fi)**. Il permet d'encapsuler et d'exécuter plusieurs projets matériels sur la même carte, en basculant entre eux via une interface de terminal en texte pur (style rétro/hacker), complètement **sans câble** et **sans reflasher** le firmware.
 
-[Explorer le Code](https://github.com/rubenblascoa/esp32-panelcontrol) · [Signaler un Bug](https://github.com/rubenblascoa/esp32-panelcontrol/issues) · [Demander une Amélioration](https://github.com/rubenblascoa/esp32-panelcontrol/issues)
+[Explorer le Code](https://github.com/rubenblascoa/esp32-panelcontrol/tree/main/Code) · [Signaler un Bug](https://github.com/rubenblascoa/esp32-panelcontrol/issues) · [Demander une Amélioration](https://github.com/rubenblascoa/esp32-panelcontrol/issues)
 
 ---
 
