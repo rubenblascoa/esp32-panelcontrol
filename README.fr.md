@@ -47,7 +47,9 @@
 Dans une architecture qui délègue 100 % du processeur aux threads FreeRTOS, la conception physique de la carte mère est critique. L'intégration de PCBWay dans ce projet répond à des besoins techniques très précis de l'environnement de bas niveau :
 
 * **Intégrité du Signal (SPI et I2C) :** Le module de clonage NFC (MFRC522) fonctionne à des fréquences où le bruit est fatal. Le routage précis des pistes de PCBWay garantit l'absence d'interférences électromagnétiques, évitant les collisions de données sur le bus et assurant des balayages sans perte.
+  
 * **Dissipation pour la Télémétrie Réelle :** Ce système extrait les données de stress et de température directement des cœurs du processeur. La qualité du cuivre et de la fibre de la carte permet une dissipation thermique adéquate, vitale pour maintenir la stabilité du processeur sous une charge continue.
+  
 * **Précision d'Assemblage (PCBA) :** L'intégration de la puce ESP32-S3 (N16R8) et la soudure des composants CMS (SMD) exigent des tolérances exactes pour que le matériel final supporte l'environnement d'exécution 24/7 sans pannes électriques.
 
 L'expérience de fabrication a été directe et sans heurts, avec une gestion fluide des fichiers Gerber et de la nomenclature (BOM) grâce au soutien de leur équipe technique (avec une mention spéciale à Liam pour avoir facilité la coordination du parrainage). Si vous cherchez à fabriquer vos propres schémas avec une qualité industrielle, les résultats répondent aux normes de l'ingénierie matérielle.
