@@ -31,10 +31,28 @@
 
 ---
 
-### <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:zap.svg?color=white"><img src="https://api.iconify.design/lucide:zap.svg?color=black" width="22" align="center"></picture> Patrocinado por
-<a href="https://www.pcbway.es/"><img src="https://www.image2url.com/r2/default/images/1779125298301-64f9e1cb-9abb-470b-8871-f272256b85a6.png" alt="PCBWay Logo" width="280"></a>
+<div align="center">
 
-> **Hardware impulsado por PCBWay:** Para el desarrollo y despliegue del ESP32 Blasco OS, contar con un hardware robusto es indispensable. He confiado en PCBWay para la fabricación de mis placas debido a la excelente calidad de sus PCBs y la precisión en el ensamblaje (PCBA). En un entorno donde las conexiones SPI/I2C de alta frecuencia y la telemetría en tiempo real no pueden fallar, la fiabilidad de sus componentes ha sido clave para garantizar la estabilidad del sistema. Su plataforma es intuitiva, el servicio de atención al cliente es rápido y los tiempos de envío son inmejorables. Totalmente recomendado para cualquier ingeniero o maker que busque dar el salto a un hardware de calidad profesional.
+### <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:zap.svg?color=white"><img src="https://api.iconify.design/lucide:zap.svg?color=black" width="22" align="center"></picture> Hardware Impulsado por PCBWay
+
+<br>
+<a href="https://www.pcbway.com/">
+  <img src="https://www.image2url.com/r2/default/images/1779125298301-64f9e1cb-9abb-470b-8871-f272256b85a6.png" alt="PCBWay Logo" width="300">
+</a>
+<br><br>
+</div>
+
+> **De la prototipación a la fabricación profesional:** El desarrollo de **ESP32 Blasco OS** exige un hardware capaz de soportar la ejecución asíncrona de múltiples programas en tiempo real. Para el despliegue físico de este proyecto, confío en los servicios de fabricación y ensamblaje (PCBA) de **[PCBWay](https://www.pcbway.com/)**.
+
+En una arquitectura que delega el 100% de la CPU a hilos de FreeRTOS, el diseño físico de la placa base es crítico. La integración de PCBWay en este proyecto responde a necesidades técnicas muy concretas del entorno de bajo nivel:
+
+* **Integridad de Señal (SPI e I2C):** El módulo de clonación NFC (MFRC522) opera a frecuencias donde el ruido es fatal. El enrutamiento preciso de las pistas de PCBWay garantiza que no haya interferencias electromagnéticas, evitando colisiones de datos en el bus y asegurando escaneos sin pérdidas.
+* **Disipación para Telemetría Real:** Este sistema extrae datos de estrés y temperatura directamente de los núcleos de la CPU. La calidad del cobre y la fibra de la placa permite una disipación térmica adecuada, vital para mantener el procesador estable bajo carga continua.
+* **Precisión en el Ensamblaje (PCBA):** La integración del chip ESP32-S3 (N16R8) y la soldadura de componentes SMD requieren tolerancias exactas para que el hardware final soporte el entorno de ejecución 24/7 sin fallos eléctricos.
+
+La experiencia de fabricación ha sido directa y sin contratiempos, con una gestión fluida de los archivos Gerber y el BOM gracias al soporte de su equipo técnico (con una mención a Liam por facilitar la coordinación del patrocinio). Si buscas manufacturar tus propios esquemáticos con calidad industrial, los resultados cumplen con los estándares de la ingeniería de hardware.
+
+**[Explora los servicios de fabricación de PCBWay aquí](https://www.pcbway.com/)**
 
 ---
 </div>
