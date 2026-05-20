@@ -47,7 +47,9 @@
 En una arquitectura que delega el 100% de la CPU a hilos de FreeRTOS, el diseño físico de la placa base es crítico. La integración de PCBWay en este proyecto responde a necesidades técnicas muy concretas del entorno de bajo nivel:
 
 * **Integridad de Señal (SPI e I2C):** El módulo de clonación NFC (MFRC522) opera a frecuencias donde el ruido es fatal. El enrutamiento preciso de las pistas de PCBWay garantiza que no haya interferencias electromagnéticas, evitando colisiones de datos en el bus y asegurando escaneos sin pérdidas.
+  
 * **Disipación para Telemetría Real:** Este sistema extrae datos de estrés y temperatura directamente de los núcleos de la CPU. La calidad del cobre y la fibra de la placa permite una disipación térmica adecuada, vital para mantener el procesador estable bajo carga continua.
+  
 * **Precisión en el Ensamblaje (PCBA):** La integración del chip ESP32-S3 (N16R8) y la soldadura de componentes SMD requieren tolerancias exactas para que el hardware final soporte el entorno de ejecución 24/7 sin fallos eléctricos.
 
 La experiencia de fabricación ha sido directa y sin contratiempos, con una gestión fluida de los archivos Gerber y el BOM gracias al soporte de su equipo técnico (con una mención a Liam por facilitar la coordinación del patrocinio). Si buscas manufacturar tus propios esquemáticos con calidad industrial, los resultados cumplen con los estándares de la ingeniería de hardware.
