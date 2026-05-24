@@ -20,7 +20,6 @@
 
 **The ultimate multi-program execution environment for low-level engineering.**
 
-![Visitas](https://komarev.com/ghpvc/?username=rubenblascoa&repo=esp32-panelcontrol&label=Views&icon=0&color=121011&style=flat-square)
 [![GitHub stars](https://img.shields.io/github/stars/rubenblascoa/esp32-panelcontrol?style=flat-square&color=black)](https://github.com/rubenblascoa/esp32-panelcontrol/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/rubenblascoa/esp32-panelcontrol?style=flat-square&color=black)](https://github.com/rubenblascoa/esp32-panelcontrol/network/members)
 [![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square)](https://opensource.org/licenses/MIT)
