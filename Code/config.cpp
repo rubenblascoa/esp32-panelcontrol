@@ -32,8 +32,8 @@
 // ============================================================================
 
 // Credenciales de Conexión de Red Local
-const char* ssid = "NETLLAR_BLASCO"; // [cite: 7] SSID exacto de la red inalámbrica de destino
-const char* password = "978830522ro_"; // [cite: 8] Frase de contraseña WPA/WPA2 de la red
+const char* ssid = ""; // [cite: 7] SSID exacto de la red inalámbrica de destino
+const char* password = ""; // [cite: 8] Frase de contraseña WPA/WPA2 de la red
 
 // Objetos para Control de Hardware Integrado
 LiquidCrystal_I2C lcd(0x27, 16, 2); // [cite: 7] Dirección hexadecimal estándar I2C 0x27, 16 columnas y 2 filas
