@@ -112,6 +112,9 @@ The firmware implements a strict separation of concerns between hardware and sof
 * **`ultrasonidos.h` / `ultrasonidos.cpp`**
   * **Purpose:** Measures Euclidean space using high-frequency acoustic bounces.
   * **Detailed logic:** Drives the `TRIG_PIN` to zero potential, emits an ultrasonic pulse by holding the pin high for exactly 10 microseconds, and cuts it off. Immediately after, it executes a high-precision `pulseIn` call on the `ECHO_PIN` with a 30ms grace period. If the echo returns, it calculates the distance in centimeters by dividing the time by two and applying the speed of sound.
+* **`dht.h` / `dht.cpp`**
+  * **Purpose:** Acquires ambient temperature and relative humidity via a custom, dependency-free 1-Wire protocol implementation for the DHT11 sensor.
+  * **Detailed logic:** Disables FreeRTOS and Wi-Fi interrupts (`noInterrupts()`) during the critical timing phase to guarantee microsecond precision on the 240MHz ESP32-S3. It drives the `DHT_PIN` LOW for 18ms to initiate the handshake, then reads 40 bits of data by evaluating the duration of HIGH pulses (<40µs = 0, >40µs = 1). Validates the payload using a 5th-byte checksum before updating the `temperaturaActual` and `humedadActual` global variables.
 
 ### 7. Utilities and Disk Logs
 * **`utils.h` / `utils.cpp`**
