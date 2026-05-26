@@ -45,16 +45,16 @@
 > **From prototyping to professional manufacturing:** The development of **ESP32 Blasco OS** demands hardware capable of supporting the asynchronous execution of multiple programs in real time. For the physical deployment of this project, I rely on the manufacturing and assembly (PCBA) services of **[PCBWay](https://www.pcbway.com/)**.
 
 
-In an architecture that delegates 100% of the CPU to FreeRTOS threads, the physical design of the motherboard is critical. The integration of PCBWay into this project responds to very specific technical needs of the low-level environment:
+>In an architecture that delegates 100% of the CPU to FreeRTOS threads, the physical design of the motherboard is critical. The integration of PCBWay into this project responds to very specific technical needs of the low-level environment:
 
-* **Signal Integrity (SPI and I2C):** The NFC cloning module (MFRC522) operates at frequencies where noise is fatal. PCBWay's precise track routing guarantees no electromagnetic interference, preventing data collisions on the bus and ensuring lossless scans.
+>* **Signal Integrity (SPI and I2C):** The NFC cloning module (MFRC522) operates at frequencies where noise is fatal. PCBWay's precise track routing guarantees no electromagnetic interference, preventing data collisions on the bus and ensuring lossless scans.
   
-* **Dissipation for Real Telemetry:** This system extracts stress and temperature data directly from the CPU cores. The quality of the board's copper and fiberglass allows for proper thermal dissipation, vital for keeping the processor stable under continuous load.
+>* **Dissipation for Real Telemetry:** This system extracts stress and temperature data directly from the CPU cores. The quality of the board's copper and fiberglass allows for proper thermal dissipation, vital for keeping the processor stable under continuous load.
   
-* **Assembly Precision (PCBA):** The integration of the ESP32-S3 (N16R8) chip and the soldering of SMD components require exact tolerances so that the final hardware supports the 24/7 execution environment without electrical failures.
+>* **Assembly Precision (PCBA):** The integration of the ESP32-S3 (N16R8) chip and the soldering of SMD components require exact tolerances so that the final hardware supports the 24/7 execution environment without electrical failures.
 
 
-The manufacturing experience has been straightforward and seamless, with smooth management of the Gerber and BOM files thanks to the support of their technical team (with a special mention to Liam for facilitating the sponsorship coordination). If you are looking to manufacture your own schematics with industrial quality, the results meet the standards of hardware engineering.
+>The manufacturing experience has been straightforward and seamless, with smooth management of the Gerber and BOM files thanks to the support of their technical team (with a special mention to Liam for facilitating the sponsorship coordination). If you are looking to manufacture your own schematics with industrial quality, the results meet the standards of hardware engineering.
 
 **[Explore PCBWay's manufacturing services here](https://www.pcbway.com/)**
 
