@@ -1,0 +1,133 @@
+// MIT License
+// 
+// Copyright (c) 2026 Ruben Blasco Armengod
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+/**
+ * @file dht.cpp
+ * @brief Implementacion nativa del protocolo 1-Wire del sensor DHT11.
+ *        Sin dependencia de libreria externa — usa solo Arduino core (digitalRead/pinMode/delayMicroseconds).
+ */
+#include "dht.h"
+#include "terminal.h"
+
+// ============================================================================
+// LECTURA NATIVA DEL PROTOCOLO DHT11
+// Retorna true si la lectura es valida. Escribe temperatura y humedad en los punteros.
+// ============================================================================
+static bool leerDHT11Raw(float &temp, float &hum) {
+  uint8_t data[5] = {0, 0, 0, 0, 0};
+
+  // --- Señal de inicio: MCU tira LOW 18ms, luego suelta la linea ---
+  pinMode(DHT_PIN, OUTPUT);
+  digitalWrite(DHT_PIN, HIGH); // Asegurar nivel alto antes de iniciar
+  delay(2);
+  digitalWrite(DHT_PIN, LOW);
+  delay(20);                   // 20ms > 18ms mínimo del protocolo DHT11
+  pinMode(DHT_PIN, INPUT_PULLUP);
+  delayMicroseconds(40);       // Espera a que el sensor tome el control del bus
+
+  // --- Deshabilitar interrupciones durante la lectura crítica de temporización ---
+  // En ESP32-S3 a 240MHz, las interrupciones del WiFi/FreeRTOS alteran micros()
+  noInterrupts();
+
+  // --- Respuesta del sensor: esperar LOW (80us) luego HIGH (80us) ---
+  // Timeout ampliado a 200us para dar margen al DHT11 (lento vs DHT22)
+  unsigned long t = micros();
+  while (digitalRead(DHT_PIN) == HIGH) { if (micros() - t > 200) { interrupts(); return false; } } // sensor tira LOW
+  t = micros();
+  while (digitalRead(DHT_PIN) == LOW)  { if (micros() - t > 100) { interrupts(); return false; } } // sensor suelta a HIGH
+  t = micros();
+  while (digitalRead(DHT_PIN) == HIGH) { if (micros() - t > 100) { interrupts(); return false; } } // sensor tira LOW de nuevo = inicio de datos
+
+  // --- Leer 40 bits (5 bytes) ---
+  for (int i = 0; i < 40; i++) {
+    // Esperar flanco de subida (inicio de bit)
+    t = micros();
+    while (digitalRead(DHT_PIN) == LOW)  { if (micros() - t > 60) { interrupts(); return false; } }
+    // Medir duracion del HIGH: <40us = 0, >40us = 1 (umbral más robusto para DHT11)
+    t = micros();
+    while (digitalRead(DHT_PIN) == HIGH) { if (micros() - t > 80) { interrupts(); return false; } }
+    if (micros() - t > 40) data[i / 8] |= (1 << (7 - (i % 8)));
+  }
+
+  // --- Re-habilitar interrupciones ---
+  interrupts();
+
+  // --- Verificar checksum ---
+  if (data[4] != ((data[0] + data[1] + data[2] + data[3]) & 0xFF)) return false;
+
+  hum  = data[0] + data[1] * 0.1f;
+  temp = data[2] + data[3] * 0.1f;
+  return true;
+}
+
+// ============================================================================
+// INICIALIZACION
+// ============================================================================
+void inicializarDHT() {
+  pinMode(DHT_PIN, INPUT_PULLUP);
+  delay(1000); // DHT11 necesita 1s tras el encendido antes de la primera lectura
+
+  float t, h;
+  if (!leerDHT11Raw(t, h)) {
+    Terminal.println("[DHT] Error: Sensor no detectado en la inicializacion.");
+  } else {
+    Terminal.println("[DHT] Sensor DHT11 inicializado correctamente.");
+  }
+}
+
+// ============================================================================
+// LECTURA INDIVIDUAL DE TEMPERATURA (C)
+// ============================================================================
+float leerTemperatura() {
+  float t, h;
+  if (!leerDHT11Raw(t, h)) {
+    Terminal.println("[DHT] Error: Lectura de temperatura invalida.");
+    return -127.0;
+  }
+  return t;
+}
+
+// ============================================================================
+// LECTURA INDIVIDUAL DE HUMEDAD RELATIVA (%)
+// ============================================================================
+float leerHumedad() {
+  float t, h;
+  if (!leerDHT11Raw(t, h)) {
+    Terminal.println("[DHT] Error: Lectura de humedad invalida.");
+    return -1.0;
+  }
+  return h;
+}
+
+// ============================================================================
+// LECTURA COMPUESTA CON ACTUALIZACION DE VARIABLES GLOBALES
+// ============================================================================
+bool actualizarDHT() {
+  float t, h;
+  if (!leerDHT11Raw(t, h)) {
+    Terminal.println("[DHT] Error: Lectura compuesta fallida, datos descartados.");
+    return false;
+  }
+  temperaturaActual = t;
+  humedadActual     = h;
+  return true;
+}
