@@ -55,7 +55,7 @@
 
 >The manufacturing experience has been straightforward and seamless, with smooth management of the Gerber and BOM files thanks to the support of their technical team (with a special mention to Liam for facilitating the sponsorship coordination). If you are looking to manufacture your own schematics with industrial quality, the results meet the standards of hardware engineering.
 
-**[Explore PCBWay's manufacturing services here](https://www.pcbway.com/)**
+>**[Explore PCBWay's manufacturing services here](https://www.pcbway.com/)**
 
 ---
 
