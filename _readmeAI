@@ -1,0 +1,792 @@
+
+<!-- dsds
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  READMEAI v2.3 — AI-TO-AI PROJECT CONTEXT FILE                     ║
+  ║  Written by AI. Read by AI. Zero human dependency.                 ║
+  ║  Purpose: eliminate project re-scanning, enforce structure,        ║
+  ║  maintain code quality, security, and semantic consistency.        ║
+  ║  Made by: Oscarr36                                                 ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
+
+# .readmeAI
+
+---
+
+## ⚙️ AI PROTOCOL — READ FIRST, EVERY TIME
+
+> **Non-negotiable. Follow exactly.**
+
+### Token efficiency rules — highest priority
+- **If STRUCTURE MAP and SYMBOL INDEX are filled: do NOT scan the filesystem.** Use them to navigate directly. A scan wastes tokens; this file exists to replace it.
+- **Never read a file you don't need.** Look up the exact location in SYMBOL INDEX before opening anything.
+- **Never read a whole file when you only need part of it.** Use the line hints in SYMBOL INDEX.
+- **Never re-infer what is already recorded here.** Trust stack, architecture, and conventions as written.
+- **One read, one reason.** Before reading any file, state what specific information you need. If you can't state it, you don't need to read it.
+
+### Session start sequence
+1. Read this file completely. This is the only mandatory full read per session.
+2. Load CURRENT SESSION STATE. Resume without asking the user to recap.
+3. Verify STRUCTURE MAP against the task. Update stale entries at session end, not now.
+4. **First-time setup only** (sections blank): scan the project once, fill every section, ask only for what cannot be inferred. Never repeat this scan.
+
+### Session end sequence — mandatory, silent, no user prompt needed
+1. Overwrite CURRENT SESSION STATE with live work state.
+2. Append to DECISIONS LOG any architectural or design decision made this session.
+3. Append to CHANGE LOG.
+4. Update STRUCTURE MAP for files created, moved, or deleted.
+5. Update SYMBOL INDEX for new functions, classes, or entry points.
+6. Update PROGRESS: complete tasks, add new backlog items.
+7. Update KNOWN ISSUES if any bug was found, fixed, or introduced.
+8. Update DEPENDENCIES if a package was added, removed, or pinned.
+9. Append to AI NOTES any non-obvious observation made this session.
+10. Zero-dependency check: could a cold AI continue from this file alone? If not, fill the gaps now.
+
+### Core rules
+- **Zero dependency principle** — This file alone must be enough for any AI to continue without human input.
+- **Trust order** — Code > this file > memory. If they disagree, trust the code and update this file.
+- **Language mirroring** — Write new content in the user's prompt language. Consistent within a session.
+- **Append, never delete** — Logs are append-only. Overwrite only genuinely stale fields.
+- **No redundancy** — Only record what is non-obvious from reading the code.
+- **Structure enforcement** — File created outside defined architecture → flag it, propose correct location, do not silently accept drift.
+- **Quality gate** — Before delivering any code, run the checklist in CODE QUALITY. Do not skip it.
+- **Scope creep guard** — Request outside current scope → record in Backlog, flag to user, do not implement without approval.
+
+---
+
+## 🧭 PROJECT CONTEXT
+
+> **Most critical section. An AI that understands WHY this exists makes correct decisions autonomously.**
+
+### Purpose
+Unified firmware for ESP32-S3 that provides multiple independent modules (NFC cloning station, ultrasonic radar, web dashboard, CLI terminal) without needing to re-flash the microcontroller when switching between functions. All modules coexist and are selectable at runtime via menu or web.
+
+### Goals
+1. Modular runtime — add/use modules without re-flashing
+2. Web-based remote control and monitoring
+3. Real-time telemetry and historical data logging
+4. NFC card cloning station (read + write MIFARE Classic 1K)
+5. Ultrasonic distance radar with CLI control
+6. DHT11 temperature and humidity sensor with CLI readout
+6. LCD diagnostic display with rotating metrics
+7. Over-the-air firmware updates (OTA)
+8. Hybrid terminal (Telnet + WebSocket) for CLI access
+
+### Non-goals
+_AI: What is explicitly OUT of scope?_
+- Mobile app (web UI is the remote interface)
+- Cloud sync or remote access beyond LAN
+- Multi-user support
+- End-to-end encryption or TLS
+- Support for NFC cards other than MIFARE Classic 1K
+- Audio/video processing
+- Real-time control loops (no hard real-time guarantees)
+
+### Target users
+_AI: Who uses this? Technical level? What do they expect?_
+Ruben Blasco Armengod (personal project). Technical (embedded/hobbyist level). Expects a development sandbox where new hardware modules can be added and tested without rebuilding the entire system.
+
+### Key constraints
+| Constraint | Detail | Impact |
+|-----------|--------|--------|
+| MCU | ESP32-S3 N16R8 (16MB Flash, 8MB PSRAM, 240MHz dual-core) | Firmware size limit, RAM budget for WebSocket + CSV buffer |
+| Fixed pinout | NeoPixel=GPIO48, NFC RST=21/SS=5, HC-SR04 TRIG=15/ECHO=16, I2C SDA=8/SCL=9, SPI MOSI=11/MISO=13/CLK=18, DHT11 DATA=GPIO4 | Hardware layout cannot change without rewiring |
+| Display | LCD 16x2 I2C (addr 0x27) | Only 32 characters visible at once; 4-page rotating display |
+| NFC | MFRC522 + MIFARE Classic 1K only | Cannot read/write other card types (NTAG, DESFire, etc.) |
+| LED | 1x NeoPixel RGB | Single status indicator, limited to color/blink patterns |
+| WiFi | Station mode, single SSID | No AP mode fallback; requires existing network |
+| WebSocket | Max 2 simultaneous clients | Hard limit; 3rd client is silently ignored |
+| CSV | Auto-deletes at 8MB | Historical data loss if not exported before threshold |
+| Telnet | Single session only | New connection rejected while active session exists |
+
+### Business / domain rules
+_AI: Non-obvious rules that govern behavior. The kind that causes bugs when unknown._
+- NFC cloning only works with "magic" (CUID/FUID) cards that accept block 0 writes. Standard MIFARE cards have block 0 locked at manufacturing.
+- Menu auto-refreshes after 5 minutes of inactivity but only when clients are connected — saves LCD burn and CPU.
+- CSV logging waits for NTP sync (checks year > 2000) — no valid timestamps before sync.
+- Web log output is silenced for the first 30 seconds after WebSocket connects — prevents startup noise flood.
+- Telnet accepts one client; any subsequent connection is rejected until the active session terminates.
+- OTA is initialized but has no authentication password — anyone on the LAN can flash new firmware.
+- Two FreeRTOS tasks run at identical priority (1) — no preemption guarantees; they cooperate via vTaskDelay(1).
+- I2C bus is shared between LCD and potentially other devices; protected by `i2cMutex` semaphore.
+- NeoPixel brightness is fixed at 50/255 (19.6%) — changing requires recompile.
+
+### Assumptions
+_AI: Things assumed true that, if wrong, would require rethinking the approach._
+- WiFi network with SSID "NETLLAR_BLASCO" and password "978830522ro_" exists and is reachable.
+- NFC cards presented are MIFARE Classic 1K with 4-byte UID.
+- Target cards for cloning support block 0 writes (magic/CUID cards).
+- I2C LCD is at address 0x27 with 16 columns and 2 rows.
+- NTP servers (pool.ntp.org, time.nist.gov) are reachable from the LAN.
+- ESP32-S3 has exactly 16MB Flash and 8MB PSRAM.
+- Serial console operates at 115200 baud (USB CDC).
+- Web browser is modern (supports ES6+, fetch, WebSocket, and Canvas).
+- Device has stable USB or external 5V power.
+- No other I2C devices share the bus at conflicting addresses.
+- SPI bus is dedicated to MFRC522 (no other SPI devices).
+
+---
+
+## 📋 PROJECT IDENTITY
+
+| Field | Value |
+|-------|-------|
+| **Name** | ESP32 Blasco OS |
+| **Version** | 0.1.0 |
+| **Phase** | `development` |
+| **Type** | Embedded firmware (ESP32-S3 N16R8) |
+| **Primary language** | C++ (Arduino framework) |
+| **Secondary languages** | HTML, CSS, JavaScript (web dashboard) |
+| **Repository** | github.com/rubenblacoa/esp32-panelcontrol |
+| **Deployment target** | ESP32-S3 N16R8 (16MB Flash, 8MB PSRAM) |
+| **Last updated** | 2026-05-21 |
+| **Updated by** | AI |
+
+---
+
+## 🛠 TECH STACK
+
+| Layer | Technology | Version | Notes |
+|-------|-----------|---------|-------|
+| Runtime | ESP32-S3 (Xtensa LX7) @ 240MHz | — | Dual-core, FreeRTOS |
+| Framework | Arduino for ESP32 | — | PlatformIO or Arduino IDE |
+| Web server | ESPAsyncWebServer | — | Async HTTP + WebSocket |
+| Filesystem | LittleFS | — | /datos.csv for telemetry history |
+| Serialization | ArduinoJson | — | WebSocket telemetry JSON |
+| NFC/RFID | MFRC522 | — | MIFARE Classic 1K, SPI |
+| Display | LiquidCrystal_I2C (16x2) | — | I2C addr 0x27, SDA=8, SCL=9 |
+| LED | Adafruit_NeoPixel | — | 1x RGB LED, GPIO 48 |
+| Ultrasonic | HC-SR04 | — | TRIG=15, ECHO=16 |
+| Temp/Humidity | DHT11 | — | DATA=GPIO4, DHT sensor library by Adafruit |
+| OTA | ArduinoOTA | — | Over-the-air updates |
+
+---
+
+## 🏗 STRUCTURE MAP
+
+> **Replaces filesystem scanning. Once filled, navigate from here — never glob or list directories.**
+> **First session: scan project, fill actual tree below. Every session after: update deltas only.**
+
+### Actual file tree
+_AI: Fill with the real project tree on first setup. Annotate every file with its role._
+
+```
+project-root/
+│
+├── .readmeAI                          ← AI context index. Never move. Never delete.
+├── main.ino                           ← Entry point: setup() + loop() → vTaskDelete, dual-core FreeRTOS init
+├── config.h                           ← All #includes, pin #defines, extern global declarations
+├── config.cpp                         ← Global variable definitions (WiFi creds, NFC block, timing, etc.)
+├── menus.h                            ← Menu function declarations
+├── menus.cpp                          ← Main menu, NFC menu, Ultrasonidos menu — display + input parsing
+├── nfc.h                              ← NFC function declarations
+├── nfc.cpp                            ← MIFARE block read/write via MFRC522 (SPI)
+├── tareas.h                           ← FreeRTOS task declarations
+├── tareas.cpp                         ← Core 0 (network/display/LED) + Core 1 (input/FSM/sensors)
+├── terminal.h                         ← TerminalHibrida class declaration (extends Print)
+├── terminal.cpp                       ← Hybrid terminal: Telnet + WebSocket dual-path output
+├── ultrasonidos.h                     ← Ultrasonic function declaration
+├── ultrasonidos.cpp                   ← HC-SR04 distance measurement (pulseIn)
+├── dht.h                              ← DHT11 temperature/humidity function declarations
+├── dht.cpp                            ← DHT11 read (temperature + humidity) via DHT library
+├── utils.h                            ← Utility function declarations
+├── utils.cpp                          ← CPU load, uptime, date/time, CSV logging, LCD updates
+├── web_server.h                       ← Web server function declarations
+├── web_server.cpp                     ← HTTP routes, WebSocket handler, login auth, file API
+├── web_pages.h                        ← PROGMEM HTML page declarations
+└── web_pages.cpp                      ← 3 HTML pages: login, dashboard, DB viewer
+```
+
+### Architecture pattern
+Monolithic embedded firmware on FreeRTOS dual-core: Core 0 (I/O, network, display, LED), Core 1 (input processing, finite state machine, sensor polling). Web serves as a remote UI layer.
+
+### Enforced directory rules
+_Not applicable — flat Arduino project structure. All files in project root._
+
+---
+
+## 🔍 SYMBOL INDEX
+
+> **Token-saving core. Jump directly to any symbol without scanning.**
+> **Update whenever a symbol is added, renamed, or moved.**
+
+### Entry points
+| Symbol | Location | Description |
+|--------|----------|-------------|
+| `setup()` | main.ino:42 | System init: Serial, I2C, LCD, WiFi, NTP, OTA, SPI, MFRC522, NeoPixel, FreeRTOS tasks |
+| `loop()` | main.ino:134 | Self-destructs via `vTaskDelete(NULL)` — delegates to FreeRTOS |
+| `taskCore0()` | tareas.cpp:9 | Core 0 loop: OTA, Telnet, LCD (3s), WebSocket telemetry (5s), CSV cron (2h), NeoPixel |
+| `taskCore1()` | tareas.cpp:113 | Core 1 loop: input multiplexer, FSM (menu/NFC/ultrasonidos) |
+
+### Core functions / methods
+| Symbol | Location | Description |
+|--------|----------|-------------|
+| `mostrarMenuPrincipal()` | menus.cpp:11 | Print main menu + telemetry banner |
+| `procesarMenuPrincipal(String)` | menus.cpp:55 | Parse main menu input (1=NFC, 2=Ultrasonidos, 3=DHT) |
+| `mostrarMenuNFC()` | menus.cpp:68 | Print NFC cloning station menu |
+| `procesarEntradaNFC(String)` | menus.cpp:80 | Parse NFC submenu input |
+| `mostrarMenuUltrasonidos()` | menus.cpp:101 | Print ultrasonic radar menu |
+| `mostrarMenuDHT()` | menus.cpp:200 | Print DHT11 sensor menu |
+| `procesarEntradaDHT(String)` | menus.cpp:224 | Parse DHT submenu input (1=read, M=exit) |
+| `modoLecturaNFC()` | nfc.cpp:5 | Poll card, auth, read block 0 → bloqueEscaneado |
+| `modoEscrituraNFC()` | nfc.cpp:29 | Poll target card, auth, write bloqueAEscribir to block 0 |
+| `medirDistanciaFisica()` | ultrasonidos.cpp:5 | Trigger HC-SR04, return cm or -1 |
+| `inicializarDHT()` | dht.cpp:33 | Init DHT11 sensor bus |
+| `leerTemperatura()` | dht.cpp:52 | Read temperature °C, return -127.0 on error |
+| `leerHumedad()` | dht.cpp:68 | Read humidity %, return -1.0 on error |
+| `actualizarDHT()` | dht.cpp:84 | Read both temp+humidity, update globals, return bool |
+| `actualizarDHT()` llamada desde | tareas.cpp (Core 0 cada 30s) | Timer periódico en taskCore0 |
+| `calcularUsoCPU(int)` | utils.cpp:5 | Real CPU load per core via micros() cycle timing (0-100) |
+| `obtenerUptime()` | utils.cpp:14 | millis() → "HH:MM:SS" |
+| `obtenerFechaHora()` | utils.cpp:22 | NTP time → "DD/MM/YYYY HH:MM" |
+| `guardarEnHistorial()` | utils.cpp:30 | Append CSV line to /datos.csv |
+| `actualizarLCD()` | utils.cpp:38 | Rotate 4 LCD pages with progress bars |
+| `iniciarServidorWeb()` | web_server.cpp:11 | Register all HTTP routes + WebSocket, start server |
+| `estaLogueado(AsyncWebServerRequest*)` | web_server.cpp:29 | Validate ZENITH_SESSION cookie |
+| `onWsEvent(...)` | web_server.cpp:48 | WebSocket connect/disconnect/data handler |
+
+### Key classes / modules
+| Symbol | Location | Description |
+|--------|----------|-------------|
+| `TerminalHibrida : public Print` | terminal.h:5 | Singleton hybrid terminal (Telnet + WebSocket). Instance: `Terminal` |
+
+### Configuration & constants
+| Symbol | Value | Location | Description |
+|--------|-------|----------|-------------|
+| `LED_PIN` | 48 | config.h:9 | NeoPixel data pin |
+| `NUMPIXELS` | 1 | config.h:10 | NeoPixel count |
+| `RST_PIN` | 21 | config.h:11 | MFRC522 reset |
+| `SS_PIN` | 5 | config.h:12 | MFRC522 chip select |
+| `TRIG_PIN` | 15 | config.h:13 | HC-SR04 trigger |
+| `ECHO_PIN` | 16 | config.h:14 | HC-SR04 echo |
+| `ssid` | "NETLLAR_BLASCO" | config.cpp:5 | WiFi SSID |
+| `password` | "978830522ro_" | config.cpp:6 | WiFi password |
+| `intervaloMenu` | 300000 (5 min) | config.cpp:18 | Menu auto-refresh timeout |
+| `intervaloMedicion` | 1000 (1 s) | config.cpp:19 | Ultrasonic sampling interval |
+| `TELEMETRY_INTERVAL` | 3000 (3 s) | tareas.cpp | WebSocket telemetry push interval |
+| `DHT_POLL_INTERVAL` | 3000 (3 s) | tareas.cpp | DHT11 sensor polling interval |
+| `programaActivo` | 0-3 | config.cpp:70 | FSM state: 0=menu, 1=NFC, 2=Ultrasonidos, 3=DHT |
+| `MAX_WEBSOCKET_CLIENTS` | 2 | config.cpp:16 | Max WS connections |
+| `DHT_PIN` | 4 | config.h:60 | DHT11 data pin |
+| `DHT_TYPE` | DHT11 | config.h:61 | Sensor model |
+| `temperaturaActual` | float | config.cpp:76 | Last valid temperature reading |
+| `humedadActual` | float | config.cpp:77 | Last valid humidity reading |
+
+### Types / schemas / interfaces
+| Symbol | Location | Description |
+|--------|----------|-------------|
+| `bloque0Habitacion[16]` | config.cpp:8 | Default NFC block 0 backup data |
+| `bloqueEscaneado[16]` | config.cpp:9 | Scanned card block buffer |
+| `bloqueManual[16]` | config.cpp:10 | Manual entry block buffer |
+| `bloqueAEscribir*` | config.cpp:11 | Pointer to NFC write source |
+
+---
+
+## 📐 CONVENTIONS
+
+> **AI: These are active from day one. Enforce them in every line of code written this session.**
+
+### File naming
+| Asset type | Convention | Example |
+|-----------|-----------|---------|
+| Source/header pairs | `snake_case.{h|cpp}` | `web_server.h`, `web_server.cpp` |
+| Main sketch | `main.ino` | `main.ino` |
+| PROGMEM HTML pages | snake_case in `web_pages.{h|cpp}` | 3 pages: login, dashboard, DB viewer |
+| Embedded sketches | `sketch_seed.h` | `sketch_seed.h` |
+| Config header | `config.h` + `config.cpp` | `config.h` |
+
+### Naming conventions — codebase reality
+| Identifier type | Actual convention | Examples |
+|----------------|-------------------|----------|
+| Functions | Spanish descriptive (not strictly verb-first) | `mostrarMenuPrincipal`, `procesarEntradaNFC`, `medirDistanciaFisica`, `guardarEnHistorial` |
+| Boolean variables | Spanish descriptive, no prefix rule | `memoriaLlena`, `sistemaListo`, `hayEntradaWeb`, `midiendoDistancia` |
+| Constants/macros | SCREAMING_SNAKE_CASE | `LED_PIN`, `NUMPIXELS`, `SS_PIN`, `TRIG_PIN` |
+| Global variables | Mixed Spanish/English lowercase | `ssid`, `password`, `programaActivo`, `modoNFC`, `entradaWeb` |
+| Classes | PascalCase Spanish | `TerminalHibrida` |
+| Structs | PascalCase English | `SketchFile` |
+| HTML pages (PROGMEM) | snake_case | `login_html`, `index_html`, `db_html` |
+
+### C++ rules
+- No classes except `TerminalHibrida` — mostly procedural/free-function style
+- All global state in `config.h`/`config.cpp` (extern pattern)
+- `PROGMEM` for large string constants (HTML pages, sketch seed)
+- FreeRTOS tasks with `vTaskDelay(1)` for yield
+- I2C bus protected by `i2cMutex` semaphore
+- No dynamic allocation beyond `new AsyncWebServer`, `new AsyncWebSocket`
+- Use `String` class freely (Arduino style), not `std::string`
+- Boolean flags as global state guarded by `volatile`-style access (no atomics)
+
+### Comments policy
+- All comments and user-facing text in **Spanish**. Never translate to English.
+- Comments explain WHY (non-obvious constraints), not WHAT (code should be self-explanatory).
+- Maintain existing Spanish comment style if editing near them.
+
+---
+
+## ✅ CODE QUALITY
+
+> **AI: Run this checklist mentally before delivering any code. This is not optional.**
+> **If any item fails, fix it before showing the code to the user.**
+
+### Pre-output checklist
+- [ ] Every function does exactly one thing. If you can describe it with "and", split it.
+- [ ] No function longer than ~30 lines. If longer, extract helper functions.
+- [ ] No nesting deeper than 3 levels (if / for / try). Use early returns to flatten.
+- [ ] No duplicated logic. If the same block appears twice, extract it.
+- [ ] No hardcoded values (strings, numbers, URLs, credentials). Use constants or config.
+- [ ] All variables and functions named semantically (see Naming Semantics below).
+- [ ] No unused variables, imports, or parameters.
+- [ ] Error paths handled. No silent failures, no swallowed exceptions.
+- [ ] No inline styles or logic-in-templates.
+- [ ] New files placed in the correct directory per STRUCTURE MAP rules.
+
+### Naming semantics — enforced
+| Identifier type | Rule | Examples |
+|----------------|------|---------|
+| Functions / methods | Must start with a verb | `getUser`, `validateEmail`, `buildQuery`, `renderCard` |
+| Boolean variables | Must start with `is`, `has`, `can`, `should` | `isLoggedIn`, `hasPermission`, `canEdit` |
+| Event handlers | Must start with `handle` or `on` | `handleSubmit`, `onClose`, `handleKeyDown` |
+| Classes | PascalCase nouns | `UserProfile`, `AuthService`, `CartItem` |
+| Constants | SCREAMING_SNAKE_CASE | `MAX_RETRIES`, `DEFAULT_TIMEOUT`, `API_BASE_URL` |
+| Collections / arrays | Plural nouns | `users`, `filteredResults`, `activeConnections` |
+| Callbacks / iterators | Singular of collection | `users.map(user => …)`, `items.forEach(item => …)` |
+
+### Forbidden patterns
+> AI: never produce code containing these. If found in existing code, flag as tech debt.
+
+- `any` type (TypeScript / gradual typing)
+- `eval()` or `Function()` constructor
+- `console.log` left in committed code (use a proper logger)
+- Direct DOM manipulation mixed with framework code
+- Synchronous file I/O in a server request path
+- Secrets or credentials in source code
+- SQL strings built by concatenation (use parameterized queries)
+- Catching errors and doing nothing (`catch (e) {}`)
+- Mutating function arguments
+- Boolean parameters that change function behavior (`doSomething(true)`) — use named options object
+
+### Consistency rules
+- If a pattern exists in the codebase, match it exactly. Do not introduce a different style.
+- If two valid patterns exist, flag the inconsistency and ask which to standardize.
+- When adding a new module, check the existing modules of the same type and mirror their structure.
+- Do not mix paradigms (e.g., classes and plain functions for the same concern in the same layer).
+
+---
+
+## 🔌 API & DATA CONTRACTS
+
+> **Goal: understand data flow without reading schema or route files.**
+
+### Exposed endpoints
+| Method | Path | Auth | Input shape | Output shape | Notes |
+|--------|------|------|------------|-------------|-------|
+| GET | `/login-page` | No | — | HTML (login_html) | Login form |
+| POST | `/login` | No | `{ user, pass }` | Redirect + Set-Cookie | user="admin", pass="blasco" |
+| GET | `/logout` | No | — | Redirect + Clear-Cookie | — |
+| GET | `/` | Cookie | `?auth=true` | HTML (index_html) | Dashboard |
+| GET | `/db` | Cookie | — | HTML (db_html) | DB viewer |
+| GET | `/datos.csv` | Cookie | — | CSV stream | /datos.csv from LittleFS |
+| GET | `/delete-db` | Cookie | — | "OK" text | Deletes /datos.csv |
+| GET | `/api/system/info` | Cookie | — | JSON: chip, ip, flash, psram, heap, uptime, fs | — |
+| WS | `/ws` | — | Text (commands) | JSON (telemetry) | Bidirectional real-time |
+
+### External APIs consumed
+_None._
+
+### Core data models
+```
+Entity: System Telemetry (CSV row in /datos.csv) — 10 columnas
+  col  field           type       constraints         notes
+  0    timestamp       string     "DD/MM/YYYY HH:MM"  NTP sync required
+  1    temperature     float      —                   ESP32-S3 core die temperature °C
+  2    cpuPercent      int        0-100               Overall CPU load (avg C0+C1)
+  3    core0Percent    int        0-100               Core 0 load
+  4    core1Percent    int        0-100               Core 1 load
+  5    ramPercent      float      0-100               PSRAM/Heap usage %
+  6    flashPercent    float      0-100               LittleFS usage %
+  7    wifiSignal      int        0-100               WiFi signal strength (linearized from RSSI dBm)
+  8    dhtTemperature  float      —                   DHT11 ambient temperature °C (-127.0 = no data)
+  9    dhtHumidity     float      0-100               DHT11 relative humidity % (-1.0 = no data)
+
+Entity: User Session
+  field           type       constraints    notes
+  username        string     "admin"        Hardcoded
+  password        string     "blasco"       Hardcoded
+  token           string     random hex     ZENITH_SESSION cookie
+
+Entity: NFC Card Block
+  field           type       constraints    notes
+  block0          byte[16]   MIFARE 1K      Card UID + manufacturer data
+```
+
+### Environment variables
+_None — all configuration is compile-time (config.h) or hardcoded._
+
+---
+
+## 🔐 SECURITY
+
+> **AI: Read this before touching auth, input handling, data access, or any user-facing boundary.**
+> **Never implement a security-relevant feature without checking this section first.**
+
+### Authentication model
+- **Auth method:** Cookie-based session (`ZENITH_SESSION`). Single user (admin/blasco).
+- **Token storage:** httpOnly cookie (set via `Set-Cookie` header on POST /login).
+- **Token lifetime:** Session length (no expiry). Token is a random hex string stored in `tokenSesionActiva`.
+- **Auth check location:** `estaLogueado()` in web_server.cpp:29.
+
+### Authorization model
+- **Model:** Flat — one user (admin). Full access to everything.
+- **Roles defined:** None (single user).
+- **Permission check location:** `estaLogueado()` on every protected route.
+
+### Sensitive data inventory
+| Data | Location in code | Storage | Encryption |
+|------|-----------------|---------|-----------|
+| WiFi password | config.cpp:6 | Firmware flash (compiled binary) | None |
+| Web login password | web_server.cpp (hardcoded) | Firmware flash (compiled binary) | None |
+| Session token | tokenSesionActiva (RAM) | Runtime variable | None |
+| NFC block data | bloqueEscaneado / bloque0Habitacion | RAM | None |
+
+### Input validation rules
+- Web login: `server.arg("user")` and `server.arg("pass")` compared as strings.
+- File API: filename parameter from query string, written directly to LittleFS path.
+- WebSocket commands: forwarded directly to Core 1 for FSM processing.
+- **No input sanitization or length validation present.**
+
+### Attack surface
+| Surface | Risk | Mitigation in place |
+|---------|------|-------------------|
+| Web file API (read/write/delete) | Arbitrary file access | Session cookie check only |
+| WebSocket | Command injection into Telnet CLI | None — commands executed as-is |
+| OTA | Unauthorized firmware flash | ArduinoOTA default (no password set) |
+| Telnet (port 23) | Unauthenticated CLI access | Session guard (`!telnetClient.connected()` reject) |
+| No TLS | Credentials sent in plaintext | No mitigation |
+
+---
+
+## ⚡ PERFORMANCE
+
+> **AI: Check this before implementing any feature that touches data fetching, rendering, or loops.**
+
+### SLAs / thresholds
+| Operation | Target | Current baseline |
+|-----------|--------|----------------|
+| Core 0 loop | <1ms per cycle | vTaskDelay(1) |
+| Core 1 loop | <1ms per cycle | vTaskDelay(1) |
+| Telemetry push | Every 5s | vTaskDelay(5000) |
+| LCD refresh | Every 3s | vTaskDelay(3000) |
+
+### Known bottlenecks
+| Area | Description | Ticket / note |
+|------|-------------|--------------|
+| SPI NFC polling | Blocking wait for card in modoLecturaNFC / modoEscrituraNFC | Blocks Core 1 during card poll |
+| pulseIn (ultrasonic) | 30ms timeout blocks Core 1 | — |
+| CSV file operations | LittleFS write during guardarEnHistorial() on Core 0 | — |
+
+### Caching strategy
+_None._
+
+---
+
+## 🧪 TESTING STRATEGY
+
+> **AI: Before writing a test, read this. Before modifying tested code, check what breaks.**
+
+### Coverage map
+_No automated tests exist. Testing is manual (flash → observe → verify)._
+
+| Layer | Tested? | Test type | Location |
+|-------|---------|----------|----------|
+| Hardware drivers (NFC, Ultrasonic, LCD, NeoPixel) | Manual | Physical verification | On-bench testing |
+| Web server routes | Manual | Browser + WebSocket client | Runtime verification |
+| Telnet CLI | Manual | Serial/Telnet terminal | Runtime verification |
+| FreeRTOS tasks | Manual | Observation (LED patterns, LCD output) | Runtime verification |
+| CSV logging | Manual | Download /datos.csv, inspect contents | Runtime verification |
+
+### Mock rules
+_Not applicable — no test infrastructure. Hardware-in-the-loop required for all testing._
+
+### Test data / fixtures
+- NFC test cards: MIFARE Classic 1K (for read), CUID/FUID magic card (for write)
+- Ultrasonic: physical object at known distances (10cm, 50cm, 1m, 2m)
+- CSV export: manually trigger and inspect downloaded file
+
+---
+
+## 🚨 ERROR HANDLING
+
+> **AI: Every error path must follow this model. No ad-hoc error handling.**
+
+### Error propagation model
+- **Strategy:** Ad-hoc. Functions return sentinel values (-1 for distance, empty strings for time) or silently swallow errors.
+- **Errors bubble to:** No centralized handler.
+- **Global error handler location:** None.
+
+### Error response format
+_Not defined. Web API returns plain text "OK" or empty responses._
+
+### Error code registry
+_None defined._
+
+### Logging rules
+- Output via `Terminal` (Telnet + WebSocket dual-path).
+- No structured logging. Ad-hoc `Terminal.println()` calls throughout.
+- WiFi/connection status printed to Serial at startup.
+
+---
+
+## 📦 DEPENDENCIES
+
+> **AI: Check this before adding, removing, or upgrading any package.**
+
+### Critical dependencies
+| Package | Version | Why pinned / why critical | Owner / docs |
+|---------|---------|--------------------------|-------------|
+| Arduino core for ESP32 | — | Platform abstraction | Espressif / Arduino |
+| ESPAsyncWebServer | — | Web server + WebSocket | me-no-dev |
+| MFRC522 | — | NFC/RFID hardware | miguelbalboa |
+| LiquidCrystal_I2C | — | LCD display driver | fdebrabander |
+| Adafruit_NeoPixel | — | RGB LED driver | Adafruit |
+| DHT sensor library | — | DHT11 temperature/humidity sensor | Adafruit |
+
+### Known conflicts
+_None known._
+
+### Update policy
+_Not defined._
+
+### Banned packages
+_None._
+
+---
+
+## 🎯 CURRENT SESSION STATE
+
+> **Overwrite each session. Not a log — a live snapshot.**
+
+### Active objective
+Menú DHT11 propio con estilo consistente, import CSV funcional, campos en blanco tolerados, consola instantánea.
+
+### Context
+Sesión de mejoras de UX y correcciones de importación CSV.
+
+### Last action taken
+- web_pages.cpp (dashboard): eliminados setTimeout(500) y setTimeout(1500) del load. initWebSocket() movido fuera del evento load para conectar al instante. cargarHistorialGrafica() tolera campos vacíos (|| null). Añadido mensaje inicial en consola.
+- web_pages.cpp (db_html): cargarBaseDatos() ya no salta filas con <10 columnas (while cols.length<10 push ''). renderPage() usa helpers n()/f()/i() para mostrar '—' en campos NaN/null sin descartar la fila. importarCSV() ahora sube el CSV al ESP32 vía POST /import-csv y recarga la vista desde el servidor.
+- web_server.cpp: añadido endpoint POST /import-csv con body handler raw (text/plain) que escribe en /datos.csv. Añadido permitirWebLog=true en WS_EVT_CONNECT para que el menú se muestre sin esperar 30s. Eliminada ruta /delete-backups.
+- dht.cpp: añadido noInterrupts()/interrupts() alrededor de la lectura crítica del protocolo 1-Wire del DHT11 para evitar que interrupciones WiFi/FreeRTOS corrompan los microsegundos.
+- menus.h/cpp: DHT11 ahora tiene submenú propio (programaActivo=3). Añadidas mostrarMenuDHT() y procesarEntradaDHT() con estilo consistente (bordes *, opción [M] SALIR AL MENU PRINCIPAL, opción [1] LEER).
+- tareas.cpp: añadido case programaActivo==3 en la FSM del Core 1 para enrutar comandos al módulo DHT11.
+
+### Next immediate step
+Awaiting user instructions.
+
+### Blockers
+- None.
+
+### Open questions
+_None._
+
+---
+
+## 📚 DECISIONS LOG
+
+> **Append per meaningful decision. Never delete. Newest first.**
+
+| Date | Decision | Alternatives considered | Rationale |
+|------|---------|------------------------|-----------|
+| 2026-05-21 | Adopt .readmeAI v2.3 for AI project context | Manual README, no context file | Eliminates re-scanning, enforces structure, reduces token waste |
+| 2026-05-21 | Dual-core FreeRTOS architecture (Core 0 = I/O, Core 1 = app) | Single-core, round-robin | Isolates network/display latency from sensor polling |
+| 2026-05-21 | Global state in extern config.h/config.cpp | Classes, singletons | Simpler for Arduino-style embedded code; matches existing patterns |
+| 2026-05-21 | Web UI as PROGMEM HTML strings | Separate SPIFFS HTML files | Eliminates need to upload filesystem separately; self-contained firmware |
+| 2026-05-21 | Cookie-based auth (admin/blasco) | No auth, digest auth | Minimal security to prevent accidental web access; simple implementation |
+
+---
+
+## 🐛 KNOWN ISSUES
+
+| ID | Status | Description | Workaround | Root cause |
+|----|--------|-------------|-----------|------------|
+| BCK-004 | `fixed` | ✅ DELETE `/api/backups/delete?folder=...` responde 500. `LittleFS.rmdir()` falla aunque se intenten todas las estrategias: iteración con `!isDirectory()`, borrado por `SKETCH_FILES[]`, doble pase de verificación. Hipótesis: (a) `entry.name()` devuelve ruta VFS con mount point y el `lastSlash` no extrae bien el filename; (b) LittleFS no libera los handles a tiempo y `remove()` falla; (c) bug del core ESP32 en `rmdir()`. No se pudo reproducir ni depurar por falta de acceso al hardware. | Depurar con `Serial.printf` del path exacto que falla en `remove()` | Sin acceso al hardware no se puede determinar la causa raíz |
+| BCK-005 | `fixed` | ✅ POST `/api/backups/create` crea la carpeta pero falla al copiar archivos o al limpiar. Pendiente de diagnosticar. | — | Sin diagnosticar |
+
+### Tech debt
+_AI: Record intentional shortcuts with the correct solution for when time allows._
+- WiFi/Web credentials hardcoded in source — should use configurable values (LittleFS config file or EEPROM).
+- No TLS/SSL on web server — all traffic in plaintext. Add ESPmbedTLS for HTTPS.
+- NFC read/write blocks Core 1 — move to Core 0 or implement non-blocking SPI with state machine.
+- No input validation on file API paths — sanitize with `basename()` + reject path traversal (`..`).
+- Telnet port 23 without authentication — add login prompt or disable by default.
+- ArduinoOTA without password — call `ArduinoOTA.setPassword("hash")`.
+- I2C mutex used but `Wire.begin()` called twice — guard with a flag.
+- ~30 global variables in config.h/cpp — refactor into namespaced modules or singleton classes.
+- Menu refresh uses `millis()` rollover-unsafe comparison — should handle `millis()` overflow.
+- No watchdog timer configured — a hard freeze requires manual reset.
+
+---
+
+## ✅ PROGRESS
+
+### Completed
+- `[x]` 2026-05-21 — Project scanned, all 20 files analyzed
+- `[x]` 2026-05-21 — .readmeAI populated with all inferable information
+- `[x]` 2026-05-21 — Essential features: WiFi, NTP, OTA, Web server, WebSocket, Telnet, LCD, NeoPixel, NFC read/write, Ultrasonic sensor, CSV logging
+-   `[x]` 2026-05-24 — DHT11 temperature/humidity sensor module (dht.h/dht.cpp)
+- `[x]` 2026-05-21 — 3 web pages implemented (login, dashboard, DB viewer)
+- `[x]` 2026-05-21 — Dual-core FreeRTOS task separation
+
+### In Progress
+- Nothing currently in progress.
+
+### Backlog
+- Add configurable credentials (LittleFS config file or captive portal)
+- Add HTTPS support (ESPmbedTLS)
+- Implement non-blocking NFC polling
+- Add Telnet authentication prompt
+- Set ArduinoOTA password
+- Add watchdog timer (ESP32 hardware watchdog)
+- Add module auto-detection on boot
+- Add AP mode fallback when WiFi fails to connect
+- Implement OOB (out-of-band) update mechanism for web UI files
+- Add MQTT support for remote telemetry
+- Integrar DHT11 en el dashboard web (gráficas históricas temp/hum)
+
+---
+
+## 🔗 CROSS-PROJECT REFERENCES
+
+> **Read sibling `.readmeAI` files before answering cross-project questions.**
+
+| Alias | Location | Relationship | Last sync |
+|-------|----------|-------------|-----------|
+| — | — | — | — |
+
+---
+
+## 🔧 ENVIRONMENT
+
+| Tool | Version | Purpose | Config location |
+|------|---------|---------|----------------|
+| Arduino IDE | 2.x | Build & flash firmware | — |
+| ESP32-S3 N16R8 | — | Target hardware (16MB Flash, 8MB PSRAM) | — |
+| LittleFS | — | Flash filesystem | Onboard flash SPI |
+| USB-UART bridge | — | Flashing + serial console (115200 baud) | Built-in USB CDC |
+| Libraries | — | See DEPENDENCIES section | Arduino library manager |
+
+### Hardware connections required
+```
+ESP32-S3          Component
+─────────────────────────────────────
+GPIO 48     →    NeoPixel RGB DIN
+GPIO 8      →    LCD SDA (I2C)
+GPIO 9      →    LCD SCL (I2C)
+GPIO 21     →    MFRC522 RST
+GPIO 5      →    MFRC522 SS/SDA
+GPIO 18     →    MFRC522 SCK/CLK
+GPIO 13     →    MFRC522 MISO
+GPIO 11     →    MFRC522 MOSI
+GPIO 15     →    HC-SR04 TRIG
+GPIO 16     →    HC-SR04 ECHO
+GPIO 4      →    DHT11 DATA (pull-up 4.7kΩ a 3.3V)
+5V / 3.3V   →    Power (MCU + components)
+GND         →    Common ground
+```
+
+### Setup sequence
+_From zero to running dev environment. Enough for a fresh machine._
+```
+1. Wire components per pin table above
+2. Install Arduino IDE 2.x (or PlatformIO) with ESP32-S3 board support
+3. Install libraries via library manager:
+   - ESPAsyncWebServer (me-no-dev)
+   - MFRC522 (miguelbalboa)
+   - LiquidCrystal_I2C (fdebrabander)
+   - Adafruit_NeoPixel (Adafruit)
+    - ArduinoJson (Benoit Blanchon)
+    - DHT sensor library (Adafruit)
+4. Configure board: ESP32-S3 (16MB Flash, 8MB PSRAM, 240MHz)
+   - USB CDC on boot: enabled
+   - Flash mode: QIO 80MHz
+   - Partition scheme: 16MB Flash (3MB APP/9.9MB FATFS)
+5. Open main.ino in Arduino IDE
+6. Select correct COM port
+7. Upload firmware via USB
+8. Open Serial Monitor (115200 baud) to observe boot sequence
+9. First boot: LittleFS auto-formats → sketch files seed to /sketch/ → WiFi connects
+10. Note assigned IP from Serial Monitor or LCD
+11. Open browser to http://<IP> → login with admin/blasco
+```
+
+### Common commands
+| Command | What it does |
+|---------|-------------|
+| Arduino IDE: Sketch → Upload (Ctrl+U) | Build + flash via USB |
+| Arduino IDE: Sketch → Export Compiled Binary | Generate .bin for OTA |
+| Serial Monitor (115200 baud) | Boot logs + debug output |
+| Telnet: `telnet <IP> 23` | CLI access (no password) |
+
+---
+
+## 🗒 AI NOTES
+
+> **Free-form scratchpad. Only for the AI.**
+> **Write here anything non-obvious that does not fit in other sections:**
+> observations about the codebase, patterns noticed, gotchas, implicit contracts,
+> surprising behavior, things that almost caused a bug, context that would take
+> minutes to re-derive but seconds to recall.
+> **Format freely. No schema. Keep entries dated.**
+> **Review this section at session start — it may save you from repeating a mistake.**
+
+_AI: Start writing below. Newest entries first._
+
+2026-05-26 — Bug root cause del "no va por IP": iniciarServidorWeb() registraba rutas pero nunca llamaba server->begin(). El servidor existía en RAM pero no escuchaba. Siempre verificar que begin() se llame al final de la función de setup del servidor. Los 3 pasos obligatorios para ESPAsyncWebServer: ws->onEvent() → server->addHandler(ws) → server->begin().
+
+2026-05-26 — DHT11 nativo es frágil en ESP32-S3 a 240MHz: los timings de micros() son muy ajustados. El timeout de respuesta del sensor debe ser ≥200µs (no 100µs). El umbral de bit 0/1 debe ser 40µs (no 28µs). Si falla en producción, considerar usar la librería Adafruit DHT con disableInterrupts.
+
+2026-05-26 — temperaturaActual/humedadActual deben inicializarse a -127.0/-1.0 (centinelas de error), NO a 0.0. El valor 0.0 es indistinguible de una lectura real y confunde al LCD y los menús.
+
+2026-05-24 — DHT11 integrado en todo el firmware. LCD ahora tiene 5 páginas (0-4), página 4 = DHT. CSV ahora tiene 10 columnas. JSON WebSocket añade dhtTemp y dhtHum. El polling DHT es cada 30s desde Core 0 (no bloquea Core 1). temperaturaActual=-127.0 si el sensor no responde (guardia en menus y LCD). StaticJsonDocument subió de 256 a 320 bytes.
+
+2026-05-24 — Nuevo módulo DHT11 creado (dht.h/dht.cpp). Sigue el mismo patrón que ultrasonidos.h/cpp: funciones libres, globals en config, logs vía Terminal. GPIO 4 para DATA. Pendiente de integrar en menús y tareas FreeRTOS.
+
+2026-05-21 — First scan complete. Project is an ESP32-S3 firmware by Ruben Blasco Armengod. Key observations:
+- All comments and user-facing text are in Spanish. Maintain Spanish for all new text.
+- Global state model: ~30 extern globals in config.h/config.cpp. No namespacing or encapsulation.
+- The web UI is embedded as PROGMEM HTML strings in web_pages.cpp — very large strings.
+- Telemetry CSV appends every 2 hours. Auto-deletes at 8MB.
+- TerminalHibrida extends Print — used as a drop-in replacement for Serial in most places.
+- Login cookie token is random but stored in RAM only (lost on reboot — user must re-login).
+- I2C_LCD addresses: LiquidCrystal_I2C(0x27, 16, 2). SDA=GPIO8, SCL=GPIO9 (non-default I2C pins).
+- `main.ino:loop()` calls `vTaskDelete(NULL)` — this is intentional to kill the Arduino loop task after FreeRTOS tasks start.
+
+---
+
+## 📜 CHANGE LOG
+
+> **Append each session. Newest first.**
+
+| Date | Actor | Summary |
+|------|-------|---------|
+| 2026-05-26 | AI | UX-001: initWebSocket() movido fuera de window.load para conectar al instante. setTimeout de carga eliminados. Consola muestra mensaje inicial. |
+| 2026-05-26 | AI | DHT-002: menú DHT11 propio (programaActivo=3) con mostrarMenuDHT()/procesarEntradaDHT(), estilo consistente con NFC/Ultrasonidos, opción [M]. |
+| 2026-05-26 | AI | CSV-002: POST /import-csv con body handler raw. importarCSV() sube al ESP32. El sistema continúa guardando sobre el CSV importado. |
+| 2026-05-26 | AI | CSV-003: campos en blanco ya no descartan filas. cargarBaseDatos()/renderPage()/cargarHistorialGrafica() padding a 10 cols, muestran '—' por celda. |
+| 2026-05-26 | AI | DHT-003: añadido noInterrupts()/interrupts() en leerDHT11Raw() para evitar que interrupciones del WiFi corrompan la temporización 1-Wire. |
+| 2026-05-26 | AI | WEB-002: permitirWebLog=true en WS_EVT_CONNECT para que el menú se muestre sin esperar 30s. Eliminada ruta /delete-backups. |
+| 2026-05-26 | AI | BUG CRÍTICO: server->begin() + ws->onEvent() + server->addHandler(ws) faltaban en iniciarServidorWeb() — el servidor HTTP nunca arrancaba. Corregido. |
+| 2026-05-26 | AI | FW-003: configTime DST 3600→0 en main.ino. DHT integrado en tareas.cpp (init + poll 3s + JSON WS). dht.cpp protocolo 1-Wire corregido (timing, umbrales). config.cpp centinelas -127.0/-1.0. |
+| 2026-05-26 | AI | Intervalos actualizados: telemetría WebSocket 5s→3s, polling DHT 30s→3s. |
+| 2026-05-26 | AI | web_pages.cpp (db_html): columnas Temp Amb + Humedad añadidas a tabla, renderPage, export SQL actualizado (temp_dht, hum_dht). cols.length<8→<10, colspan 9→11. |
+| 2026-05-24 | AI | Nuevo módulo DHT11 (dht.h/dht.cpp + config.h/cpp). GPIO 4. Funciones: inicializarDHT, leerTemperatura, leerHumedad, actualizarDHT. |
+| 2026-05-24 | AI | DHT11 integrado: tareas.cpp (init + poll 30s + telemetría WS campos dhtTemp/dhtHum), menus.cpp (opción [3] + telemetría en banner), utils.cpp (CSV cols 9-10 + LCD página E). |
+| 2026-05-23 | AI | BCK-004 + BCK-005 fixed. Causa raíz común: LittleFS no permite remove() con directorio/entry aún abiertos — el iterador se corrompe y rmdir() falla. Fix: recopilar rutas en vector, cerrar dir, luego remove(). 3 sitios corregidos: ruta 8.5 create + ruta 8.6 delete (web_server.cpp) + eliminarCarpetaBackup() (utils.cpp). Buffer 4096→512 bytes en task async (evita stack overflow). |
+| 2026-05-23 | AI | BCK-003 (final): documentados en .readmeAI los 2 bugs persistentes de backups. Ver KNOWN ISSUES BCK-004 y BCK-005. |
+| 2026-05-23 | AI | Corregidos leaks de file handle en backups: `/api/backups/create`, `/api/backups/delete`, `/api/backups/files`, boot cleanup, `eliminarCarpetaBackup()`. Añadida sincronización de `lista.txt` tras delete/create de backups. |
+| 2026-05-23 | AI | Corregidos 8 bugs adicionales: NFC-001 (vTaskDelay en poll NFC), OTA-001 (setPassword en OTA), TEL-001 (auth prompt + max 3 intentos en Telnet), WEB-001 (sanitización .. en file API), CSV-001 (warning antes de delete 8MB), I2C-001 (eliminado lcd.init duplicado), WS-001 (change-detection en telemetría). Añadida variable telnetAutenticado/telnetIntentos/TELNET_PASSWORD a config. |
+| 2026-05-23 | AI | Corregidos 14 bugs del firmware en fuente: FW-001 (vTaskDelay en seed loop), WS-002 (>= en vez de >), WS-003 (eliminado permitirWebLog=true en onWsEvent), FW-003 (configTime con DST=0), SEC-002 (auth en /api/system/*), AUTH-002 (auth en onRequest de save), FW-002 (root.close en 11.1 y 11.4), SEC-001 (whitelist en backups), BCK-001 (sync lista.txt). Actualizado .readmeAI (KNOWN ISSUES → fixed, Backlog limpiado). |
+| 2026-05-23 | AI | Añadidos bugs del informe ZenithMC Firmware a KNOWN ISSUES (IDs: BCK-001..002, AUTH-002, FW-001..003, SEC-001..002, WS-002..003) y sus correspondientes tareas de corrección al Backlog. |
+| 2026-05-21 | AI | Completed .readmeAI to 100%. Filled PROJECT CONTEXT (goals, non-goals, constraints, rules, assumptions), updated CONVENTIONS to match actual codebase, added KNOWN ISSUES with IDs, DECISIONS LOG, PROGRESS, expanded TESTING and ENVIRONMENT sections, set CURRENT SESSION STATE. |
+
+---
+
