@@ -129,6 +129,8 @@ extern byte bloque0Habitacion[16]; //  Matriz persistente de datos de respaldo N
 extern byte bloqueEscaneado[16];   //  Almacenamiento estático temporal de datos leídos físicamente
 extern byte bloqueManual[16];      //  Búfer auxiliar para almacenamiento de bloques manuales
 extern byte *bloqueAEscribir;      //  Puntero dinámico a la fuente de datos que va a ser clonada
+extern byte dumpTarjeta[1024];     //  Buffer para dump completo (16 sectores x 4 bloques x 16 bytes)
+extern bool dumpValido;            //  Flag de integridad del dump completo
 
 // Máquinas de Estado Operativas
 int extern programaActivo;         //  Estado del módulo ejecutor principal (FSM General)
@@ -157,6 +159,10 @@ extern const unsigned long intervaloMedicion;   //  Periodo de refresco de la le
 
 // Sincronización en Entornos Multitarea (FreeRTOS)
 extern SemaphoreHandle_t i2cMutex;
+// [FIX] Mutex para el bus SPI compartido entre MFRC522 y SD Card.
+// Sin este mutex, operaciones simultáneas desde Core 0 (SD) y Core 1 (NFC)
+// corrompen las transacciones SPI produciendo lecturas fantasma silenciosas.
+extern SemaphoreHandle_t spiMutex;
 
 // Flag de disponibilidad de la tarjeta SD
 extern bool sdDisponible;                        
@@ -164,4 +170,5 @@ extern bool sdDisponible;
 // Autenticación Telnet
 extern const char* TELNET_PASSWORD;
 extern bool telnetAutenticado;
-extern int telnetIntentos;              //  Semáforo de exclusión mutua para la protección del bus I2C
+extern int telnetIntentos;
+extern unsigned long tiempoUltimaActividadTelnet; // Timestamp de última actividad Telnet

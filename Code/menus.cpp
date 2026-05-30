@@ -126,8 +126,8 @@ void mostrarMenuNFC() { //
   Terminal.println("\n**************************************************"); // 
   Terminal.println("          ESTACION DE CLONACION PRO V14           "); // 
   Terminal.println("**************************************************"); // 
-  Terminal.println(" [1] LEER Y GUARDAR: Radiografia completa + Memoria"); // 
-  Terminal.println(" [2] CLONAR: Elige que datos quieres copiar."); // 
+  Terminal.println(" [1] LEER Y GUARDAR: Dump completo (64 bloques)"); // 
+  Terminal.println(" [2] CLONAR: Escribe dump completo en tarjeta destino."); // 
   Terminal.println(" [N] VOLVER AL MENU NFC (A esta pantalla)"); // 
   Terminal.println(" [M] SALIR AL MENU PRINCIPAL (ESP32 Blasco)"); // 
   Terminal.println("--------------------------------------------------"); // 

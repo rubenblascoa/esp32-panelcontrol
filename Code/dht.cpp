@@ -132,7 +132,7 @@ bool actualizarDHT() {
       humedadActual     = h;
       return true;
     }
-    if (intento == 0) delay(1000);
+    if (intento == 0) vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
   Terminal.println("[DHT] Error: Lectura compuesta fallida, datos descartados.");
   return false;

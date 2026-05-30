@@ -53,13 +53,18 @@ void setup() {
   // 2. Inicialización prioritaria del bus de comunicación I2C (Pines SDA->GPIO 8 | SCL->GPIO 9) 
   Wire.begin(8, 9);  // Abre los canales físicos de datos
 
-  // Creación del semáforo Mutex de FreeRTOS para blindar el acceso compartido al hardware I2C entre núcleos
-  i2cMutex = xSemaphoreCreateMutex();  // 
+  // Creación de semáforos Mutex de FreeRTOS para blindar accesos compartidos entre núcleos
+  i2cMutex = xSemaphoreCreateMutex();
+  // [FIX] Mutex para el bus SPI compartido entre MFRC522 y SD Card.
+  // Sin este mutex, operaciones simultáneas desde distintos cores corrompen las transacciones SPI.
+  spiMutex = xSemaphoreCreateMutex();
 
-  // Secuencia estricta de doble inicialización del chip controlador del display LCD
-  lcd.init();       // Primer disparo de reset eléctrico 
-  lcd.init();       // Segundo disparo forzado para asentar los registros del bus sin usar retrasos delay 
-  lcd.backlight();  // Encendemos los transistores de la retroiluminación de la pantalla LCD 
+  // [FIX] Delay de estabilización del bus I2C antes de init (reemplaza la doble
+  // inicialización anterior, que dejaba registros del HD44780 en estados intermedios
+  // en algunos chips). 50 ms es suficiente para que el bus I2C estabilice la tensión.
+  delay(50);
+  lcd.init();
+  lcd.backlight();  // Encendemos los transistores de la retroiluminación de la pantalla LCD
 
   
   // Imprimimos el banner de inicio del sistema operativo Zenith en la primera columna y fila 
@@ -142,11 +147,14 @@ void setup() {
   }
 
   // 7. Arranque de los servicios y escuchas de periféricos rápidos 
-  ArduinoOTA.begin();             // Inicializa el servicio de escucha inalámbrica para carga de firmwares de red 
+  if (webPass.length() > 0) {
+      ArduinoOTA.setPassword(webPass.c_str());
+  }
+  ArduinoOTA.begin();
 
+  SPI.begin(18, 13, 11, SS_PIN);
   mfrc522 = new MFRC522(SS_PIN, RST_PIN);
-  SPI.begin(18, 13, 11, SS_PIN);  // Inicializa el bus SPI hardware asignando los pines CLK->18, MISO->13 y MOSI->11 
-  mfrc522->PCD_Init();             // Inicializa los registros lógicos y la antena inductiva del chip RC522 
+  mfrc522->PCD_Init(); 
 
   // 8. INICIALIZACIÓN DE LA TARJETA SD (deshabilitada por defecto; descomentar pines en config.h) 
   #ifdef SD_CS_PIN
@@ -184,9 +192,9 @@ void setup() {
 // BUCLE RECURRENTE CLÁSICO DE ARDUINO (Inoperante y Delegado a FreeRTOS)
 // ============================================================================
 void loop() {
-  // El ciclo repetitivo nativo de Arduino queda completamente anulado.
-  // Al invocar vTaskDelete pasando un argumento de tipo NULL, forzamos al programador multinúcleo
-  // a auto-destruir el lazo loop() clásico, liberando de forma inmediata todos sus recursos de memoria RAM
-  // y delegando el 100% del silicio a los dos hilos asíncronos paralelos distribuidos. 
-  vTaskDelete(NULL);  // 
+  // El ciclo nativo de Arduino queda completamente delegado a FreeRTOS.
+  // [FIX] Se usa vTaskDelay(portMAX_DELAY) en lugar de vTaskDelete(NULL):
+  // la tarea existe pero duerme indefinidamente sin consumir CPU, evitando
+  // comportamientos indefinidos si Arduino reimplementa su scheduler interno.
+  vTaskDelay(portMAX_DELAY);
 }

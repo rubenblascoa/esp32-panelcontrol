@@ -81,6 +81,8 @@ byte bloque0Habitacion[16] = {0x60, 0xC9, 0x13, 0x1C, 0xA6, 0x08, 0x04, 0x00, 0x
 byte bloqueEscaneado[16];         //  Espacio en RAM para volcar lecturas de tarjetas físicas
 byte bloqueManual[16];            //  Espacio en RAM para operaciones de escritura alternativa
 byte *bloqueAEscribir = nullptr;  //  Puntero seguro inicializado apuntando a la dirección nula
+byte dumpTarjeta[1024];           //  Buffer para dump completo (16 sectores x 4 bloques x 16 bytes)
+bool dumpValido = false;          //  Flag de integridad del dump completo
 
 // Punteros de Estado Base y Flags de Modulos Hardware
 int programaActivo = 0;           //  Comienza en el menú principal por defecto en el arranque
@@ -109,11 +111,14 @@ const unsigned long intervaloMedicion = 1000; //  1000 milisegundos equivalen a 
 
 // Semáforos de Exclusión Mutua para FreeRTOS
 SemaphoreHandle_t i2cMutex = nullptr;        //  Puntero inicial nulo para el manejador de exclusión mutua I2C
+// [FIX] Mutex para bus SPI compartido (MFRC522 + SD Card)
+SemaphoreHandle_t spiMutex = nullptr;
 
 // Autenticación Telnet
 const char* TELNET_PASSWORD = "blasco";      // Contraseña para acceso Telnet
 bool telnetAutenticado = false;              // Flag de autenticación Telnet
 int telnetIntentos = 0;                      // Contador de intentos fallidos Telnet
+unsigned long tiempoUltimaActividadTelnet = 0; // Timestamp de última actividad Telnet
 
 // Tarjeta SD
 bool sdDisponible = false;                   // Flag de disponibilidad de la tarjeta SD

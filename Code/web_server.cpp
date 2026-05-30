@@ -100,7 +100,9 @@ void iniciarServidorWeb() {
       if(request->hasParam("password", true)) p = request->getParam("password", true)->value(); 
 
       if(u == webUser && p == webPass) {
-          tokenSesionActiva = String(random(100000, 999999)) + String(millis()); 
+          // [FIX] Generación de token con TRNG de hardware del ESP32 (esp_random) en lugar
+          // de random() de Arduino, cuyo LFSR sin semilla criptográfica es predecible.
+          tokenSesionActiva = String(esp_random(), HEX) + String(esp_random(), HEX);
           
           AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", "");
           response->addHeader("Location", "/?auth=true");
@@ -169,7 +171,6 @@ void iniciarServidorWeb() {
   server->on("/api/system/info", HTTP_GET, [](AsyncWebServerRequest *request){
       if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; }
 
-      String ip = WiFi.localIP().toString();
       uint32_t heapLibre = ESP.getFreeHeap();
       uint32_t heapTotal = ESP.getHeapSize();
       float heapPct = heapTotal > 0 ? (1.0f - (float)heapLibre / heapTotal) * 100.0f : 0;
@@ -178,32 +179,37 @@ void iniciarServidorWeb() {
       float flashUsado = (float)LittleFS.usedBytes();
       float flashPct   = flashTotal > 0 ? (flashUsado / flashTotal) * 100.0f : 0;
 
-      String json = "{\"chip\":\"ESP32-S3\",\"ip\":\"" + ip + "\",";
-      json += "\"flash_kb\":" + String((int)(flashTotal / 1024)) + ",";
-      json += "\"flash_pct\":" + String(flashPct, 1) + ",";
-      json += "\"psram_kb\":" + String(ESP.getPsramSize() / 1024) + ",";
-      json += "\"heap_pct\":" + String(heapPct, 1) + ",";
-      json += "\"uptime\":\"" + obtenerUptime() + "\",";
-      json += "\"fs_usado_kb\":" + String((int)(flashUsado / 1024)) + "}";
+      StaticJsonDocument<256> doc;
+      doc["chip"] = "ESP32-S3";
+      doc["ip"] = WiFi.localIP().toString();
+      doc["flash_kb"] = (int)(flashTotal / 1024);
+      doc["flash_pct"] = flashPct;
+      doc["psram_kb"] = (int)(ESP.getPsramSize() / 1024);
+      doc["heap_pct"] = heapPct;
+      doc["uptime"] = obtenerUptime();
+      doc["fs_usado_kb"] = (int)(flashUsado / 1024);
 
-      request->send(200, "application/json", json);
+      String out;
+      serializeJson(doc, out);
+      request->send(200, "application/json", out);
   });
 
   // ── GET /api/config/info → IP, SSID, RSSI, pines actuales, usuario web
   server->on("/api/config/info", HTTP_GET, [](AsyncWebServerRequest *request){
     if(!estaLogueado(request)) { request->send(401, "application/json", "{\"error\":\"unauth\"}"); return; }
-    String json = "{";
-    json += "\"ip\":\""    + WiFi.localIP().toString() + "\",";
-    json += "\"ssid\":\""  + String(WiFi.SSID())       + "\",";
-    json += "\"rssi\":"    + String(WiFi.RSSI())        + ",";
-    json += "\"user\":\""  + webUser                    + "\",";
-    json += "\"pins\":{";
-    json += "\"nfcRst\":"  + String(RST_PIN)  + ",";
-    json += "\"nfcSs\":"   + String(SS_PIN)   + ",";
-    json += "\"trigPin\":" + String(TRIG_PIN) + ",";
-    json += "\"echoPin\":" + String(ECHO_PIN) + ",";
-    json += "\"dhtPin\":"  + String(DHT_PIN)  + "}}";
-    request->send(200, "application/json", json);
+    StaticJsonDocument<256> doc;
+    doc["ip"] = WiFi.localIP().toString();
+    doc["ssid"] = WiFi.SSID();
+    doc["rssi"] = WiFi.RSSI();
+    doc["user"] = webUser;
+    doc["pins"]["nfcRst"] = RST_PIN;
+    doc["pins"]["nfcSs"] = SS_PIN;
+    doc["pins"]["trigPin"] = TRIG_PIN;
+    doc["pins"]["echoPin"] = ECHO_PIN;
+    doc["pins"]["dhtPin"] = DHT_PIN;
+    String out;
+    serializeJson(doc, out);
+    request->send(200, "application/json", out);
   });
 
   // ── POST /api/config/webcred → cambia usuario y contraseña web (valida pass actual)

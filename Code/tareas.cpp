@@ -63,11 +63,10 @@ void taskCore0(void * pvParameters) {
 
   telnetServer.begin();
   iniciarServidorWeb();
-  inicializarDHT();
 
-  unsigned long tiempoUltimoGuardadoBD = 0;
   unsigned long lastTelemetryTime = 0;
   unsigned long lastNtpCheck = 0;
+  int ultimaHoraGuardada = -1;
   bool primerGuardado = true;
 
   uint32_t inicioCiclo0 = micros();
@@ -91,9 +90,46 @@ void taskCore0(void * pvParameters) {
           telnetServer.available().stop();
       } else {
         telnetClient = telnetServer.available();
-        Terminal.println("\n[SISTEMA] Conectado TCP.");
-        mostrarMenuPrincipal();
+        // [FIX] Resetear estado de autenticacion al conectar un nuevo cliente
+        telnetAutenticado = false;
+        telnetIntentos = 0;
+        tiempoUltimaActividadTelnet = millis();
+        // Pedir contraseña antes de mostrar el menu
+        telnetClient.println("\r\n[ZENITH OS] Autenticacion requerida.");
+        telnetClient.print("Contrasena: ");
       }
+    }
+
+    // [FIX] Gestión de autenticación Telnet: procesar contraseña antes de permitir comandos
+    if (telnetClient && telnetClient.connected() && !telnetAutenticado && telnetClient.available() > 0) {
+      String passIntento = telnetClient.readStringUntil('\n');
+      passIntento.trim();
+      if (passIntento == webPass) {
+        telnetAutenticado = true;
+        telnetIntentos = 0;
+        Terminal.println("\n[SISTEMA] Autenticacion correcta. Conectado al SO Blasco.");
+        mostrarMenuPrincipal();
+      } else {
+        telnetIntentos++;
+        if (telnetIntentos >= 3) {
+          telnetClient.println("[SISTEMA] Demasiados intentos fallidos. Conexion cerrada.");
+          telnetClient.stop();
+          telnetAutenticado = false;
+          telnetIntentos = 0;
+        } else {
+          telnetClient.print("[SISTEMA] Contrasena incorrecta. Intento ");
+          telnetClient.print(telnetIntentos);
+          telnetClient.println("/3. Contrasena: ");
+        }
+      }
+    }
+
+    // --- TELNET TIMEOUT (5 min inactividad) ---
+    if (telnetClient && telnetClient.connected() && millis() - tiempoUltimaActividadTelnet > 300000) {
+        telnetClient.println("\r\n[SISTEMA] Conexion cerrada por inactividad (5 min).");
+        telnetClient.stop();
+        telnetAutenticado = false;
+        telnetIntentos = 0;
     }
 
     // --- WEBSOCKET TELEMETRÍA ---
@@ -143,30 +179,26 @@ void taskCore0(void * pvParameters) {
     }
 
     // --- CRONJOB CSV (Cada 2 horas usando hora NTP, verificado cada 30s) ---
-    if (primerGuardado) {
+    unsigned long ahoraMillis = millis();
+    if (ahoraMillis - lastNtpCheck >= 30000) {
+        lastNtpCheck = ahoraMillis;
+
+        if (primerGuardado) {
+            guardarEnHistorial();
+            primerGuardado = false;
+        }
+
         struct tm timeinfo;
         if (getLocalTime(&timeinfo) && timeinfo.tm_year > 100) {
-            primerGuardado = false;
-            if (timeinfo.tm_hour % 2 == 0 && timeinfo.tm_min == 0 && timeinfo.tm_sec < 5) {
+            if (timeinfo.tm_hour % 2 == 0 && timeinfo.tm_min == 0 && timeinfo.tm_hour != ultimaHoraGuardada) {
                 guardarEnHistorial();
-            }
-        }
-    }
-    else if (!primerGuardado) {
-        unsigned long ahora = millis();
-        if (ahora - lastNtpCheck >= 30000) {
-            lastNtpCheck = ahora;
-            struct tm timeinfo;
-            if (getLocalTime(&timeinfo) && timeinfo.tm_year > 100) {
-                if (timeinfo.tm_hour % 2 == 0 && timeinfo.tm_min == 0 && timeinfo.tm_sec < 5) {
-                    guardarEnHistorial();
-                }
+                ultimaHoraGuardada = timeinfo.tm_hour;
             }
         }
     }
 
     tiempoProcesamientoCore[0] = micros() - inicioCiclo0;
-    vTaskDelay(1);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
@@ -174,6 +206,8 @@ void taskCore0(void * pvParameters) {
 // CORE 1: LCD, DHT11, NEOPIXEL, TERMINAL INPUT, SENSORES FSM
 // ============================================================================
 void taskCore1(void * pvParameters) {
+  inicializarDHT();
+
   unsigned long tiempoUltimoLCD = 0;
   unsigned long tiempoUltimoDHT = 0;
   unsigned long tiempoUltimoLED = 0;
@@ -197,7 +231,7 @@ void taskCore1(void * pvParameters) {
     }
 
     // --- NEOPIXEL ---
-    bool hayEspectadoresLED = (telnetClient && telnetClient.connected()) || (ws->count() > 0);
+    bool hayEspectadoresLED = (telnetClient && telnetClient.connected() && telnetAutenticado) || (ws->count() > 0);
     if (hayEspectadoresLED) {
       if (millis() - tiempoUltimoLED >= 500) {
         tiempoUltimoLED = millis();
@@ -215,10 +249,12 @@ void taskCore1(void * pvParameters) {
     }
 
     // --- ENTRADA DE TEXTO (Telnet / WebSocket) ---
+    // [FIX] Solo procesar entrada Telnet si el cliente esta autenticado
     String entrada = "";
-    if (telnetClient && telnetClient.connected() && telnetClient.available() > 0) {
+    if (telnetClient && telnetClient.connected() && telnetAutenticado && telnetClient.available() > 0) {
       entrada = telnetClient.readStringUntil('\n');
       entrada.trim();
+      tiempoUltimaActividadTelnet = millis();
     } else {
       char* cmdPtr = NULL;
       if (xQueueReceive(cmdQueue, &cmdPtr, 0) == pdTRUE && cmdPtr) {
@@ -228,7 +264,7 @@ void taskCore1(void * pvParameters) {
       }
     }
 
-    bool hayEspectadores = (telnetClient && telnetClient.connected()) || (ws->count() > 0);
+    bool hayEspectadores = (telnetClient && telnetClient.connected() && telnetAutenticado) || (ws->count() > 0);
 
     // --- FSM ---
     if (programaActivo == 0) {

@@ -20,77 +20,227 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/**
- * @file nfc.cpp
- * @brief Implementación de procesos de lectura, descifrado y sobreescritura de sectores NFC.
- */
-#include "nfc.h"        // Inclusión de la interfaz propia
-#include "terminal.h"   // Permite imprimir los reportes de éxito o error en la terminal híbrida
-#include "menus.h"      // Permite invocar la interfaz de refresco mostrarMenuNFC() al finalizar el ciclo
+#include "nfc.h"
+#include "terminal.h"
+#include "menus.h"
 
-// ============================================================================
-// SUBRUTINA DE INTERROGACIÓN PASIVA Y VOLCADO DE MEMORIA NFC
-// ============================================================================
-void modoLecturaNFC() {                   
-  // Sondeo de bajo nivel en el bus SPI. Si no hay tarjeta presente o no se lee su número de serie, aborta de inmediato
-  if (!mfrc522->PICC_IsNewCardPresent() || !mfrc522->PICC_ReadCardSerial()) return;
+#define NUM_NFC_KEYS 20
 
-  byte buffer[18];            // Búfer local temporal (MIFARE lee en bloques de 16 bytes + 2 bytes de CRC)
-  byte size = sizeof(buffer); // Descriptor de tamaño obligatorio exigido por la biblioteca
-  
-  // Desafío criptográfico: Autenticamos el Sector 0 usando el comando Key A estándar y la clave almacenada en RAM
-  MFRC522::StatusCode status = mfrc522->PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 0, &key, &(mfrc522->uid));
-  
-  // Evaluamos si el chip destino aceptó el protocolo de cifrado simétrico
-  if (status == MFRC522::STATUS_OK) {     
-    // Ejecutamos la lectura en crudo del bloque 0 (contiene UID, BCC y datos del fabricante)
-    status = mfrc522->MIFARE_Read(0, buffer, &size);
-    
-    // Si la transferencia de datos a través del bus SPI fue exitosa
-    if (status == MFRC522::STATUS_OK) {   
-      // Transferencia segura indexada byte a byte hacia la matriz de memoria RAM global
-      for (byte j = 0; j < 16; j++) bloqueEscaneado[j] = buffer[j];
-      
-      memoriaLlena = true; // Elevamos la bandera lógica para indicar que los datos son íntegros y válidos
-      Terminal.println("\n[EXITO] Bloque 0 guardado."); // Imprimimos la confirmación en Telnet/Web
-    }
-  }
-  
-  // Secuencia mandatoria de apagado para liberar la tarjeta física y detener el cifrado del hardware
-  mfrc522->PICC_HaltA(); // Desactiva la bobina de la tarjeta
-  mfrc522->PCD_StopCrypto1(); // Libera las unidades criptográficas del lector
-  
-  vTaskDelay(2000 / portTICK_PERIOD_MS); // Pausa anti-rebote electromagnético de 2 segundos para evitar lecturas fantasmas cíclicas
-  modoNFC = 0; // Restablecemos el sub-estado a modo pasivo (espera)
-  mostrarMenuNFC(); // Redibujamos de forma asíncrona el menú en la consola del usuario
+static const byte NFC_KEY_DICT[NUM_NFC_KEYS][6] = {
+  {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+  {0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5},
+  {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7},
+  {0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+  {0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5},
+  {0x4D, 0x3A, 0x99, 0xC3, 0x51, 0xDD},
+  {0x1A, 0x98, 0x2C, 0x7E, 0x45, 0x9A},
+  {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF},
+  {0x71, 0x4C, 0x5C, 0x88, 0x6E, 0x97},
+  {0x00, 0x00, 0x00, 0x00, 0x00, 0x0F},
+  {0x00, 0x00, 0x00, 0x00, 0x00, 0xFF},
+  {0xA0, 0xB0, 0xC0, 0xD0, 0xE0, 0xF0},
+  {0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5},
+  {0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5},
+  {0x00, 0x01, 0x02, 0x03, 0x04, 0x05},
+  {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC},
+  {0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
+  {0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56},
+  {0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
+  {0x1A, 0x2B, 0x3C, 0x4D, 0x5E, 0x6F},
+};
+
+static MFRC522::MIFARE_Key sectorKeyExitosas[16];
+static bool sectorAutenticado[16];
+
+static void printHexByte(byte b) {
+  if (b < 0x10) Terminal.print("0");
+  Terminal.print(b, HEX);
 }
 
-// ============================================================================
-// SUBRUTINA DE MODULACIÓN OPERATIVA Y ESCRITURA EN TARJETAS DESTINO
-// ============================================================================
-void modoEscrituraNFC() {                 
-  // Sondeo del bus SPI. Si no encuentra ninguna tarjeta preparada en el campo inclinable, retorna
-  if (!mfrc522->PICC_IsNewCardPresent() || !mfrc522->PICC_ReadCardSerial()) return;
-  
-  // Autenticación mandatoria del bloque de destino antes de intentar operaciones de alteración de celdas
-  MFRC522::StatusCode status = mfrc522->PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 0, &key, &(mfrc522->uid));
-  
-  // Si la tarjeta destino valida la clave criptográfica de acceso
-  if (status == MFRC522::STATUS_OK) {     
-    // Intentamos la inyección del bloque de memoria mediante comando directo de escritura SPI
-    // Nota crítica: Requiere que la tarjeta objetivo sea de tipo "Magic Card" uid-changeable (CUID/FUID)
-    status = mfrc522->MIFARE_Write(0, bloqueAEscribir, 16);
-    
-    // Despacho de logs de diagnóstico según el resultado eléctrico devuelto por el hardware
-    if (status == MFRC522::STATUS_OK) Terminal.println("\n[EXITO] Tarjeta Clonada.");
-    else Terminal.println("\n[ERROR] Tarjeta no grabable.");
+static bool autenticarSector(byte sector) {
+  byte blockBase = sector * 4;
+
+  if (sector > 0 && sectorAutenticado[sector - 1]) {
+    MFRC522::StatusCode status = mfrc522->PCD_Authenticate(
+      MFRC522::PICC_CMD_MF_AUTH_KEY_A, blockBase,
+      &sectorKeyExitosas[sector - 1], &(mfrc522->uid));
+    if (status == MFRC522::STATUS_OK) {
+      sectorKeyExitosas[sector] = sectorKeyExitosas[sector - 1];
+      sectorAutenticado[sector] = true;
+      return true;
+    }
+    mfrc522->PCD_StopCrypto1();
   }
-  
-  // Apagado físico del canal inductivo de radiofrecuencia
+
+  for (int k = 0; k < NUM_NFC_KEYS; k++) {
+    MFRC522::MIFARE_Key testKey;
+    memcpy(testKey.keyByte, NFC_KEY_DICT[k], 6);
+
+    MFRC522::StatusCode status = mfrc522->PCD_Authenticate(
+      MFRC522::PICC_CMD_MF_AUTH_KEY_A, blockBase,
+      &testKey, &(mfrc522->uid));
+
+    if (status == MFRC522::STATUS_OK) {
+      sectorKeyExitosas[sector] = testKey;
+      sectorAutenticado[sector] = true;
+      return true;
+    }
+
+    mfrc522->PCD_StopCrypto1();
+  }
+
+  sectorAutenticado[sector] = false;
+  return false;
+}
+
+void modoLecturaNFC() {
+  if (spiMutex && xSemaphoreTake(spiMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+
+  if (!mfrc522->PICC_IsNewCardPresent() || !mfrc522->PICC_ReadCardSerial()) {
+    if (spiMutex) xSemaphoreGive(spiMutex);
+    return;
+  }
+
+  for (int i = 0; i < 16; i++) sectorAutenticado[i] = false;
+
+  byte buffer[18];
+  byte size = sizeof(buffer);
+
+  dumpValido = false;
+  bool algunSectorOK = false;
+
+  Terminal.println("\n[NFC] Dump completo MIFARE 1K (64 bloques, diccionario de claves):");
+  Terminal.println("      Sec | Blo | Clave            | Datos (hex)");
+  Terminal.println("----------------------------------------------------------");
+
+  for (byte sector = 0; sector < 16; sector++) {
+    byte blockBase = sector * 4;
+
+    if (!autenticarSector(sector)) {
+      Terminal.printf("      %2d  |  -- | NO KEY           | Sector saltado\n", sector);
+      continue;
+    }
+
+    Terminal.printf("      %2d  |     | ", sector);
+    for (byte j = 0; j < 6; j++) { printHexByte(sectorKeyExitosas[sector].keyByte[j]); }
+    Terminal.println();
+
+    for (byte blk = 0; blk < 4; blk++) {
+      byte blockNum = blockBase + blk;
+      size = sizeof(buffer);
+      MFRC522::StatusCode status = mfrc522->MIFARE_Read(blockNum, buffer, &size);
+
+      if (status == MFRC522::STATUS_OK) {
+        byte* dst = &dumpTarjeta[blockNum * 16];
+        for (byte j = 0; j < 16; j++) dst[j] = buffer[j];
+
+        Terminal.printf("      %2d  |  %d  | ", sector, blk);
+        for (byte j = 0; j < 16; j++) { printHexByte(buffer[j]); Terminal.print(" "); }
+        Terminal.println();
+        algunSectorOK = true;
+      } else {
+        Terminal.printf("      %2d  |  %d  | Read FAIL\n", sector, blk);
+      }
+    }
+
+    mfrc522->PCD_StopCrypto1();
+  }
+
+  if (algunSectorOK) {
+    for (byte j = 0; j < 16; j++) bloqueEscaneado[j] = dumpTarjeta[j];
+    memoriaLlena = true;
+    dumpValido = true;
+  }
+
+  Terminal.println("----------------------------------------------------------");
+  if (dumpValido) Terminal.println("[EXITO] Dump completo de 64 bloques guardado en RAM.");
+  else            Terminal.println("[AVISO] No se pudo leer ningun sector de la tarjeta.");
+
   mfrc522->PICC_HaltA();
   mfrc522->PCD_StopCrypto1();
-  
-  vTaskDelay(3000 / portTICK_PERIOD_MS); // Espera extendida de 3 segundos para asegurar la fijación de la EEPROM física del tag
-  modoNFC = 0; // Regreso seguro a la máquina de estados en reposo
-  mostrarMenuNFC(); // Refresca los terminales conectados
+
+  if (spiMutex) xSemaphoreGive(spiMutex);
+
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  modoNFC = 0;
+  mostrarMenuNFC();
+}
+
+void modoEscrituraNFC() {
+  if (spiMutex && xSemaphoreTake(spiMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+
+  if (!mfrc522->PICC_IsNewCardPresent() || !mfrc522->PICC_ReadCardSerial()) {
+    if (spiMutex) xSemaphoreGive(spiMutex);
+    return;
+  }
+
+  Terminal.println("\n[NFC] Clonando tarjeta destino...");
+
+  for (byte sector = 0; sector < 16; sector++) {
+    byte blockBase = sector * 4;
+
+    bool authOK = false;
+
+    if (sectorAutenticado[sector]) {
+      MFRC522::StatusCode status = mfrc522->PCD_Authenticate(
+        MFRC522::PICC_CMD_MF_AUTH_KEY_A, blockBase,
+        &sectorKeyExitosas[sector], &(mfrc522->uid));
+      if (status == MFRC522::STATUS_OK) {
+        authOK = true;
+      } else {
+        mfrc522->PCD_StopCrypto1();
+      }
+    }
+
+    if (!authOK) {
+      for (int k = 0; k < NUM_NFC_KEYS; k++) {
+        MFRC522::MIFARE_Key testKey;
+        memcpy(testKey.keyByte, NFC_KEY_DICT[k], 6);
+
+        MFRC522::StatusCode status = mfrc522->PCD_Authenticate(
+          MFRC522::PICC_CMD_MF_AUTH_KEY_A, blockBase,
+          &testKey, &(mfrc522->uid));
+
+        if (status == MFRC522::STATUS_OK) {
+          sectorKeyExitosas[sector] = testKey;
+          sectorAutenticado[sector] = true;
+          authOK = true;
+          break;
+        }
+
+        mfrc522->PCD_StopCrypto1();
+      }
+    }
+
+    if (!authOK) {
+      Terminal.printf("  [ERROR] Sector %d: Auth FAIL (ninguna clave funciona)\n", sector);
+      continue;
+    }
+
+    for (byte blk = 0; blk < 4; blk++) {
+      byte blockNum = blockBase + blk;
+      byte* dataPtr = &dumpTarjeta[blockNum * 16];
+
+      MFRC522::StatusCode status = mfrc522->MIFARE_Write(blockNum, dataPtr, 16);
+
+      if (status == MFRC522::STATUS_OK) {
+        Terminal.printf("  Sector %2d, Bloque %2d: OK\n", sector, blk);
+      } else {
+        Terminal.printf("  Sector %2d, Bloque %2d: FAIL\n", sector, blk);
+      }
+    }
+
+    mfrc522->PCD_StopCrypto1();
+  }
+
+  Terminal.println("\n[EXITO] Proceso de clonacion finalizado.");
+
+  mfrc522->PICC_HaltA();
+  mfrc522->PCD_StopCrypto1();
+
+  if (spiMutex) xSemaphoreGive(spiMutex);
+
+  vTaskDelay(3000 / portTICK_PERIOD_MS);
+  modoNFC = 0;
+  mostrarMenuNFC();
 }

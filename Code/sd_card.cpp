@@ -23,6 +23,8 @@
 /**
  * @file sd_card.cpp
  * @brief Implementacion del modulo de tarjeta SD para almacenamiento de datos CSV.
+ * [FIX] Todas las operaciones SPI envueltas con spiMutex para evitar colisiones
+ *       con el modulo MFRC522 cuando ambos cores accedan al bus simultaneamente.
  */
 #include "sd_card.h"
 
@@ -32,6 +34,8 @@
   static SPIClass sdSPI;
 
   bool inicializarSD() {
+    // La inicializacion ocurre en setup(), antes de crear las tareas FreeRTOS,
+    // por lo que no necesita mutex aqui.
     sdSPI.begin(SD_CLK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
     if (!SD.begin(SD_CS_PIN, sdSPI)) {
       Serial.println("❌ [SD] No se pudo inicializar la tarjeta");
@@ -45,29 +49,44 @@
 
   bool guardarLineaSD(const String& linea) {
     if (!sdDisponible) return false;
+    // [FIX] Proteger acceso SPI con spiMutex
+    if (spiMutex && xSemaphoreTake(spiMutex, pdMS_TO_TICKS(200)) != pdTRUE) return false;
     File file = SD.open("/datos.csv", FILE_APPEND);
-    if (!file) return false;
-    bool ok = file.print(linea);
-    file.close();
+    bool ok = false;
+    if (file) {
+      ok = file.print(linea);
+      file.close();
+    }
+    if (spiMutex) xSemaphoreGive(spiMutex);
     return ok;
   }
 
   bool eliminarCSV_SD() {
     if (!sdDisponible) return false;
-    return SD.remove("/datos.csv");
+    if (spiMutex && xSemaphoreTake(spiMutex, pdMS_TO_TICKS(200)) != pdTRUE) return false;
+    bool ok = SD.remove("/datos.csv");
+    if (spiMutex) xSemaphoreGive(spiMutex);
+    return ok;
   }
 
   bool existeCSV_SD() {
     if (!sdDisponible) return false;
-    return SD.exists("/datos.csv");
+    if (spiMutex && xSemaphoreTake(spiMutex, pdMS_TO_TICKS(200)) != pdTRUE) return false;
+    bool ok = SD.exists("/datos.csv");
+    if (spiMutex) xSemaphoreGive(spiMutex);
+    return ok;
   }
 
   size_t tamanoCSV_SD() {
     if (!sdDisponible) return 0;
+    if (spiMutex && xSemaphoreTake(spiMutex, pdMS_TO_TICKS(200)) != pdTRUE) return 0;
     File file = SD.open("/datos.csv", FILE_READ);
-    if (!file) return 0;
-    size_t s = file.size();
-    file.close();
+    size_t s = 0;
+    if (file) {
+      s = file.size();
+      file.close();
+    }
+    if (spiMutex) xSemaphoreGive(spiMutex);
     return s;
   }
 

@@ -20,24 +20,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/**
- * @file nfc.h
- * @brief Declaración de las subrutinas de control para el lector RFID MFRC522.
- */
-#pragma once // Directiva de preprocesador que impide la doble inclusión de este header
+#pragma once
 
-#include "config.h" // Inclusión mandatoria para interactuar con el objeto mfrc522 global
+#include "config.h"
 
-// ============================================================================
-// DECLARACIÓN DE FUNCIONES DE HARDWARE NFC
-// ============================================================================
-
-/**
- * @brief Realiza el escaneo continuo del bus SPI para interceptar tarjetas, autenticarse y volcar el bloque 0.
- */
-void modoLecturaNFC(); //
-
-/**
- * @brief Detecta una tarjeta mágica o destino y escribe en su bloque 0 la información previamente respaldada.
- */
-void modoEscrituraNFC(); //
+void modoLecturaNFC();
+void modoEscrituraNFC();
