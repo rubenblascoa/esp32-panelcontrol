@@ -14,7 +14,7 @@
   </picture>
 </h3>
 
-[Español](README.es.md) · [English](README.en.md) · **Français**
+[Español](README.es.md) · [English](README.md) · **Français**
 
 ---
 
@@ -244,7 +244,7 @@ Voici l'environnement d'exécution du Système d'Exploitation. Cliquez sur les m
 </details>
 
 <details>
-<summary><b>Authentification (Login) et Configuration Initiale</b></summary>
+<summary><b>Authentification (Login)</b></summary>
 <br>
 
 <p><i>Thème Sombre</i></p>
@@ -252,6 +252,41 @@ Voici l'environnement d'exécution du Système d'Exploitation. Cliquez sur les m
 
 <p><i>Thème Clair</i></p>
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/72f2c465-19c3-456b-9e2b-9e858a1d2273" />
+</details>
+
+<details>
+<summary><b>Configuration Interne</b></summary>
+<br>
+
+<p><i>Thème Sombre</i></p>
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/0ef0f0d3-2d07-4788-a5ba-e5ab27a03350" />
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/fc443c62-634d-437d-b8ac-b34004d1911f" />
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/25386ba6-4501-4d4b-b53e-b7bc85d0a78c" />
+
+
+<p><i>Thème Clair</i></p>
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/92536347-e43d-4ae2-8d77-b39f28956280" />
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/f0722d4c-c2fb-45b4-9eb4-78b2052cc72c" />
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/a1f0496e-58c5-4706-96f9-b061129aa223" />
+
+</details>
+
+<details>
+<summary><b>Configuration Initiale</b></summary>
+<br>
+
+<p><i>Thème Sombre</i></p>
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/7baf8092-9362-4781-b994-7e944e0e2b77" />
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/c21cca77-21ab-4a27-968c-e9bdb81bb691" />
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/780ecdca-629f-4bed-ac2a-09ff42127f92" />
+
+
+
+<p><i>Thème Clair</i></p>
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/2d2c4c3b-e5e7-4fae-a8e1-2485f2c790c6" />
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/8361138e-f22b-478e-94a1-d0e94df2959a" />
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/55d62211-ca00-482a-b7dc-7fac87c9ab99" />
+
 </details>
 
 ---
