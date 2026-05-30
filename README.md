@@ -24,7 +24,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-ESP32--S3-black?style=flat-square)](#)
 
-**ESP32 Blasco** is a low-level engineering platform and a multi-program execution environment designed exclusively for the ESP32 microcontroller. It acts as a lightweight "Operating System" remotely accessible via **Telnet (Wi-Fi)**. It allows encapsulating and executing multiple hardware projects on the same board, switching between them through a pure text terminal interface (retro/hacker style), completely **wire-free** and **without re-flashing** the firmware.
+**ESP32 Blasco** is a low-level engineering platform and a multi-program execution environment designed exclusively for the ESP32-S3 microcontroller. It acts as a lightweight "Operating System" remotely accessible via **Telnet (Wi-Fi)** and WebSockets. It allows encapsulating and executing multiple hardware projects on the same board, switching between them through a pure text terminal interface (retro/hacker style), completely **wire-free** and featuring **dynamic runtime hot-configuration**.
 
 [Explore the Code](https://github.com/rubenblascoa/esp32-panelcontrol/tree/main/Code) · [Report a Bug](https://github.com/rubenblascoa/esp32-panelcontrol/issues) · [Request an Improvement](https://github.com/rubenblascoa/esp32-panelcontrol/issues)
 
@@ -43,7 +43,6 @@
 
 > **From prototyping to professional manufacturing:** The development of **ESP32 Blasco OS** demands hardware capable of supporting the asynchronous execution of multiple programs in real time. For the physical deployment of this project, I rely on the manufacturing and assembly (PCBA) services of **[PCBWay](https://www.pcbway.com/)**.
 
-
 >In an architecture that delegates 100% of the CPU to FreeRTOS threads, the physical design of the motherboard is critical. The integration of PCBWay into this project responds to very specific technical needs of the low-level environment:
 
 >* **Signal Integrity (SPI and I2C):** The NFC cloning module (MFRC522) operates at frequencies where noise is fatal. PCBWay's precise track routing guarantees no electromagnetic interference, preventing data collisions on the bus and ensuring lossless scans.
@@ -51,7 +50,6 @@
 >* **Dissipation for Real Telemetry:** This system extracts stress and temperature data directly from the CPU cores. The quality of the board's copper and fiberglass allows for proper thermal dissipation, vital for keeping the processor stable under continuous load.
   
 >* **Assembly Precision (PCBA):** The integration of the ESP32-S3 (N16R8) chip and the soldering of SMD components require exact tolerances so that the final hardware supports the 24/7 execution environment without electrical failures.
-
 
 >The manufacturing experience has been straightforward and seamless, with smooth management of the Gerber and BOM files thanks to the support of their technical team (with a special mention to Liam for facilitating the sponsorship coordination). If you are looking to manufacture your own schematics with industrial quality, the results meet the standards of hardware engineering.
 
@@ -67,87 +65,66 @@ The firmware implements a strict separation of concerns between hardware and sof
 
 ### 1. Entry Core and Orchestration
 * **`main.ino`**
-  * **Purpose:** It is the physical entry point of the ESP32-S3 and the main file read by the Arduino IDE to compile the entire directory.
-  * **Detailed logic:** Contains an empty `loop()` and a `setup()` method responsible for waking up components in a strict cascade (serial port, I2C bus, LCD screen, GPIO pins, Wi-Fi modem, and NTP synchronization). Upon completion, it creates the two FreeRTOS tasks (`taskCore0` and `taskCore1`), passes control to them, and self-destructs using `vTaskDelete(NULL)` to delegate 100% of the CPU to the asynchronous processing threads.
+  * **Purpose:** It is the physical entry point of the ESP32-S3 and the main orchestration file.
+  * **Detailed logic:** If the system lacks valid network credentials, it automatically provisions a local **Wi-Fi Access Point (AP)** named `Esp32BlascoOS_Setup` to spin up a Captive Portal. Once connected, it sets up the physical I2C bus, loads NVS settings, hooks up the status LED, initializes the FreeRTOS processing cores (`taskCore0` and `taskCore1` with 16KB of stack allocation each), and purges itself calling `vTaskDelete(NULL)` to grant complete CPU control to the scheduler.
 
-### 2. Configuration and Shared Memory
-* **`config.h`**
-  * **Purpose:** Defines system libraries, physical pin mappings for the board, and abstractly declares variables shared by both cores.
-  * **Detailed logic:** Houses `#include` directives and `#define` statements for the LED, RFID reader, and ultrasonic sensor. It contains global variable signatures preceded by the `extern` keyword, indicating to other `.cpp` files that the variable exists in the common RAM, preventing duplicates and linker errors.
-* **`config.cpp`**
-  * **Purpose:** Acts as the actual physical space in RAM where the variables from the `config.h` dictionary are created and initialized.
-  * **Detailed logic:** Executes only once at startup to reserve the exact space required by the firmware. It stores the real Wi-Fi credentials, memory allocation for web server objects, fixed arrays for MIFARE keys, and command synchronization buffers.
+### 2. Configuration and System State
+* **`config.h` / `config.cpp`**
+  * **Purpose:** Abstract layout definition of global memory structures, thresholds, and runtime pin maps.
+  * **Detailed logic:** Declares macros for logging streams (`LOG_I`/`LOG_E`) and binds global state variables via the `extern` keyword to prevent duplication across compiler units. Complex peripherals like the `MFRC522` reader are handled strictly as dynamic pointers (`MFRC522*`), enabling complete runtime remapping of GPIO connections from the Captive Portal or REST endpoints without modifying a single line of source code.
 
-### 3. Duplicated Text Channel
-* **`terminal.h`**
-  * **Purpose:** Defines the structure of the custom `TerminalHibrida` class.
-  * **Detailed logic:** Declares the class inheriting from the native Arduino `Print` library, exposing traditional `.print()` and `.println()` methods, as well as dynamic block controllers (`iniciarBloque()`, `enviarBloque()`).
-* **`terminal.cpp`**
-  * **Purpose:** Controls the asynchronous algorithm that duplicates text messages in real time.
-  * **Detailed logic:** When calling `Terminal.println()`, it intercepts characters, sending them first over the open TCP socket to Telnet (Putty). In parallel, if a web browser is listening, it accumulates characters in a dynamic string (`bufferWeb`) and dispatches them to the WebSocket when finding a newline `\n` (unless in Block Mode). It features a security rule that flushes the buffer if it exceeds 200 characters to prevent memory leaks.
+### 3. Multi-Core Scheduler (FreeRTOS)
+* **`tareas.h` / `tareas.cpp`**
+  * **Purpose:** Controls the hardware-distributed infinite processing loops replacing the default Arduino execution flow.
+  * **Detailed logic:**
+    * **`taskCore0`:** Manages network interfaces and local storage. It handles raw async WebSocket inputs, executes background OTA flashes, throttles NTP syncing, and triggers a periodic file cronjob every 2 hours to back up historical system state logs.
+    * **`taskCore1`:** Dedicated entirely to physical hardware operations. It evaluates input console command queues (`cmdQueue`), refreshes the 5-page diagnostic LCD using safe thread guards, and steps through the running states of the active background sensors.
 
 ### 4. Graphical Interface and Frontend
-* **`web_pages.h`**
-  * **Purpose:** Declares three global text constants containing the structured frontend files.
-  * **Detailed logic:** Exposes references to `index_html`, `db_html`, and `login_html` accompanied by the `PROGMEM` storage modifier.
-* **`web_pages.cpp`**
-  * **Purpose:** Stores the exact and massive HTML, CSS, and JavaScript code for the three web control panels.
-  * **Detailed logic:** Forces the ESP32-S3 via the `PROGMEM` directive to save these pages directly into the unalterable Flash memory (ROM) transistors. If hosted in conventional RAM, they would consume over 80% of the dynamic Heap, causing memory exhaustion reboots when users connect.
+* **`web_pages.h` / `web_pages.cpp`**
+  * **Purpose:** Stores the unalterable HTML, CSS, and modern JavaScript structures for the remote administration dashboards.
+  * **Detailed logic:** Uses the `PROGMEM` keyword to lock the massive web layouts (Dashboard, DB Viewer, Config Panel, Captive Portal, and Login screens) into the Flash memory space. This prevents the assets from polluting the dynamic RAM Heap, completely removing memory-exhaustion reboots during simultaneous client attachments.
 
 ### 5. Routing and Network Security
-* **`web_server.h`**
-  * **Purpose:** Defines the asynchronous HTTP server functions and the WebSocket callback that processes web frames.
-* **`web_server.cpp`**
-  * **Purpose:** Acts as the network traffic dispatcher assigned to Core 0.
-  * **Detailed logic:**
-    * *Security:* Executes the `estaLogueado()` function, inspecting HTTP headers for the `ZENITH_SESSION` cookie linked to the random token in RAM.
-    * *HTTP Routes:* Handles requests for `/login` (creating the cookie with `HttpOnly` and `SameSite=Strict` flags), `/logout` (destroys the session), `/datos.csv` (streams the historical file directly from LittleFS to the browser), and `/delete-db` (deletes the physical log file).
-    * *WebSocket (onWsEvent):* Captura la trama de red en crudo cuando un usuario escribe en la consola del navegador; si recibe `"reboot"` reinicia la placa, y si recibe comandos de control, los copia en `entradaWeb` e iza la bandera `hayEntradaWeb` para avisar al Core 1.
+* **`web_server.h` / `web_server.cpp`**
+  * **Purpose:** Handles async network routing and incoming server sockets on Core 0.
+  * **Detailed logic:** Provisions a complete REST API engine exposing 19 operational endpoints. Validates request authenticity by verifying the `ZENITH_SESSION` cookie against the dynamic token in RAM. WebSocket inputs are processed using safe memory allocations (`malloc/memcpy`), shielding the system against frame-based heap corruption, and endpoints like `/api/config/pins` handle live JSON data streams to map internal hardware states on the fly.
 
 ### 6. Sensor Controllers (Hardware)
 * **`nfc.h` / `nfc.cpp`**
-  * **Purpose:** Manages proximity reading and cloning cycles via the physical SPI bus.
-  * **Detailed logic:** When Core 1 grants access, it continuously interrogates the MFRC522 hardware. In read mode, it performs a cryptographic challenge to the physical tag using MIFARE passwords; if it responds correctly, it dumps Block 0 into the `bloqueEscaneado` variable. In write mode, it injects this data matrix into a blank rewritable card.
+  * **Purpose:** Drives proximity reading, block auditing, and cloning cycles over the physical SPI bus.
+  * **Detailed logic:** Controls the MFRC522 chip to communicate with MIFARE Classic 1K cards. Validates authorization keys (Key A) before extracting sector blocks. In write mode, it targets rewritable magic cards (CUID/FUID), rewriting Sector 0 and Block 0 to clone UID fingerprints.
 * **`ultrasonidos.h` / `ultrasonidos.cpp`**
-  * **Purpose:** Measures Euclidean space using high-frequency acoustic bounces.
-  * **Detailed logic:** Drives the `TRIG_PIN` to zero potential, emits an ultrasonic pulse by holding the pin high for exactly 10 microseconds, and cuts it off. Immediately after, it executes a high-precision `pulseIn` call on the `ECHO_PIN` with a 30ms grace period. If the echo returns, it calculates the distance in centimeters by dividing the time by two and applying the speed of sound.
+  * **Purpose:** Captures spatial metric parameters via acoustic reflection using the HC-SR04 transductor.
+  * **Detailed logic:** Uses a 100% non-blocking hardware Finite State Machine (FSM). Fires a brief 10µs trigger pulse and binds a low-level interrupt routine (`IRAM_ATTR ecoISR`) to the ECHO pin to calculate sound flight time. This eliminates blocking calls like `pulseIn()`, letting Core 1 multitask freely during acoustic propagation.
 * **`dht.h` / `dht.cpp`**
-  * **Purpose:** Acquires ambient temperature and relative humidity via a custom, dependency-free 1-Wire protocol implementation for the DHT11 sensor.
-  * **Detailed logic:** Disables FreeRTOS and Wi-Fi interrupts (`noInterrupts()`) during the critical timing phase to guarantee microsecond precision on the 240MHz ESP32-S3. It drives the `DHT_PIN` LOW for 18ms to initiate the handshake, then reads 40 bits of data by evaluating the duration of HIGH pulses (<40µs = 0, >40µs = 1). Validates the payload using a 5th-byte checksum before updating the `temperaturaActual` and `humedadActual` global variables.
+  * **Purpose:** Extracts localized relative humidity and temperature parameters via the DHT11 sensor.
+  * **Detailed logic:** Features a custom, dependency-free native 1-Wire protocol implementation. Temporarily isolates the processor from timing anomalies by turning off system interrupts (`noInterrupts()`) during the microsecond-critical bit-banging capture window. Implements an automated 1-second auto-retry mechanic to guarantee data integrity against ambient electromagnetic interference.
 
 ### 7. Utilities and Disk Logs
 * **`utils.h` / `utils.cpp`**
-  * **Purpose:** Provides backend logical support to the firmware for statistics, time, and I2C bus management.
-  * **Detailed logic:**
-    * `calcularUsoCPU()`: Mathematically estimates the heuristic stress load of the cores based on active tasks.
-    * `guardarEnHistorial()`: Opens the `/datos.csv` file in LittleFS and appends a structured text line with the date, internal chip temperature, dynamic CPU loads, RAM/Flash occupancy, and Wi-Fi signal level.
-    * `actualizarLCD()`: Controls the physical screen via the `xSemaphoreTake(i2cMutex)` call to lock the I2C bus before writing, avoiding data collisions, rendering visual progress bars (`|====  |`), and automatically rotating every 3 seconds among 4 telemetry pages.
+  * **Purpose:** Backend helper framework for mathematical smoothing, persistent storage, and physical bus routing.
+  * **Detailed logic:** Computes actual core stress profiles using an Exponential Moving Average algorithm (EMA 30/70) to screen out momentary spikes. Manages 3 separate persistent NVS spaces (`zenithmc`, `hwconfig`, `webcred`) to protect underlying peripheral mappings from accidental Wi-Fi wipes. Uses an explicit Mutex semaphore (`i2cMutex`) to coordinate shared I2C traffic on the LCD display while rolling across 5 distinct telemetry screens.
+* **`sd_card.h` / `sd_card.cpp`** *(Optional)*
+  * **Purpose:** Interconnects a physical MicroSD card expansion slot over a dedicated SPI bus.
+  * **Detailed logic:** Safeguarded under the preprocessor compilation guard `#ifdef SD_CS_PIN`. When present, it automatically intercepts database logging tasks from internal storage and streams the output directly onto physical disk media.
 
 ### 8. Text Layer (CLI Interface)
 * **`menus.h` / `menus.cpp`**
-  * **Purpose:** Contains the visual layout in plain text and the hierarchical navigation tree of the operating system.
-  * **Detailed logic:** Manages what the user visualizes when connecting via terminal. Calls `Terminal.iniciarBloque()` to retain characters, prints the console's decorative frames, and concatenates the real-time calculation of PSRAM, processor speed, and Uptime before sending the unified block to the network. Houses the functions that modify the `programaActivo` variable to switch menus.
-
-### 9. Multi-Core Scheduler (FreeRTOS)
-* **`tareas.h` / `tareas.cpp`**
-  * **Purpose:** Houses the two hardware-distributed infinite loops that replace the conventional Arduino `loop`.
-  * **Detailed logic:**
-    * `taskCore0` (Assigned to Core 0): Mounts the LittleFS file system (formatting it if corruption is detected). Processes incoming network connections, manages OTA updates, runs the synchronous NTP clock, triggers the database cronjob every 2 hours, and controls the stroboscopic flashing of the status LED.
-    * `taskCore1` (Assigned to Core 1): Monitored in parallel if any command has entered via Putty or WebSockets. Depending on the state of `programaActivo`, it asynchronously executes NFC listening on the SPI bus or triggers ultrasonic pings at an exact frequency of 1Hz (every 1000ms) without ever interfering with the other core's network processes.
+  * **Purpose:** Visual framework and action parsing logic for the text-based console interface.
+  * **Detailed logic:** Employs the `TerminalHibrida` buffering layout to package complex telemetry arrays (Uptime, Core stress, Heap space) before blasting them onto the network fabric, cutting down TCP packet pollution. Changes the running index `programaActivo` to redirect execution states.
 
 ---
 
 ## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:list.svg?color=white"><img src="https://api.iconify.design/lucide:list.svg?color=black" width="26" align="center"></picture> Main Features
 
-* **100% Wireless Control:** Full access to the user interface using any Telnet client (Port 23) via the local Wi-Fi network.
-* **OTA (Over-The-Air) Updates:** Built-in support to inject new code remotely without a USB connection.
-* **Advanced Real-Time Telemetry:** System monitoring including:
-  * RAM consumption (Total, Used, Free).
-  * Flash Memory state (Storage).
-  * Silicon core temperature (`Core Temp`).
-  * Processor Frequency (`CPU Speed`).
-  * Uninterrupted Activity Time (`Uptime`).
-* **Modular Architecture ("Drawers"):** The code separates the master menu from subprograms, allowing the addition of new sensors or projects without breaking others' code.
+* **100% Wireless Control:** Complete access to the system terminal and diagnostic output through standard Telnet (Port 23) and raw WebSockets.
+* **Dynamic Hardware Pin Mapping (Plug & Play):** On its first deployment, the OS launches an automated configuration hotspot (`Esp32BlascoOS_Setup`). Users can safely configure their localized router parameters, assign custom GPIO pins, and set web passwords from any smartphone browser without rebuilding the firmware.
+* **EMA-Smoothed Real-Time Telemetry:** Advanced diagnostics detailing:
+  * Dynamic RAM/PSRAM boundaries (Total, Allocated, Free).
+  * Local File Storage map occupancy (LittleFS / SD Card).
+  * True multi-core mathematical processor loads and silicon temperature profiles.
+* **NTP Time-Backed Database:** Fully automated background logging routines. Once synced to atomic network clocks, the firmware appends a structured 10-column telemetry line into the system CSV spreadsheet every 2 hours continuously.
 
 ---
 
@@ -158,7 +135,7 @@ Developing and testing multiple hardware projects on a single microcontroller is
 | Without Blasco OS | With Blasco OS |
 | :--- | :--- |
 | Mandatory USB connection to test | **100% Wireless** via Telnet |
-| Flash firmware on every change | **Hot-swapping** between modules |
+| Flash firmware on every physical pin change | **Runtime Configuration** via Captive Portal |
 | Basic monitoring via Serial | **Advanced telemetry** (RAM, Flash, Temp, CPU) |
 | Updates via cable | **OTA Support** (Over-The-Air) |
 | Coupled projects that break code | **Modular Architecture** (Independent "Drawers") |
@@ -172,39 +149,45 @@ Currently, the operating system has three main integrated projects:
 ### 1. NFC Cloning Station Pro (V14)
 An advanced RFID auditing and cloning module using **MFRC522** hardware.
 * **Deep Reading:** Extracts all information from the card and saves it into the ESP32 RAM.
-* **Physical Cloning:** Allows injecting data into Sector 0 of rewritable cards.
-* **Multi-Source:** Clone from RAM, inject a Hardcoded master key, or type a hex code manually.
+* **Physical Cloning:** Allows injecting data into Sector 0 of rewritable magic cards (CUID/FUID).
 
 ### 2. Ultrasonic Radar (V3)
 Physical telemetry module using the **HC-SR04** distance sensor.
-* **Asynchronous Execution:** Non-blocking flow; handles network requests and web server concurrently.
-* **Loop Reading:** Configurable cyclical refresh with fault-tolerant thermal logic.
+* **Asynchronous Execution (ISR):** 100% Non-blocking flow driven by hardware interrupts; the ESP32 suffers zero micro-freezes while the sound bounces.
+* **Loop Reading:** Configurable cyclical refresh with thermal fault tolerance ("Out of range").
 
 ### 3. Ambient Temperature and Humidity Monitor (V1)
-Integrated local climate data acquisition module.
-* **Precision Sampling:** Continuous telemetry of relative humidity and ambient temperature.
-* **Data Management:** Automatic synchronization of historical readings.
+Integrated local climate data acquisition module via **DHT11**.
+* **Native 1-Wire Protocol:** Low-level reading (Bit-Banging) that relies on no third-party libraries, optimized with hardware delays and auto-recovery routines against electromagnetic noise.
 
 ---
 
 ## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:hard-drive.svg?color=white"><img src="https://api.iconify.design/lucide:hard-drive.svg?color=black" width="26" align="center"></picture> Required Hardware and Installation
 
 * **Base Board:** ESP32 (S3 N16R8 or similar).
-* **NFC Module:** MFRC522 RFID Reader (Connected via SPI bus: SDA->D5, RST->D21).
-* **Distance Module:** HC-SR04 Sensor (TRIG->D12, ECHO->D14).
+* **NFC Module:** MFRC522 RFID Reader (SPI Bus).
+* **Distance Module:** HC-SR04 Sensor.
+* **Climate Sensor:** DHT11 Module (with 4.7kΩ pull-up resistor).
+* **Storage Module (Optional):** MicroSD Reader (SPI Bus).
 
-### Deployment:
-1. Configure your Wi-Fi credentials (`ssid` and `password`) in the source code.
-2. Flash the code via USB for the first time using Arduino IDE.
-3. Open the Serial console at `115200 baud` to discover the assigned local IP.
-4. Open your web browser and navigate to that local IP.
-5. Enjoy the environment!
+> *Note: The system boots with default pins, but all hardware connections (RST, SS, TRIG, ECHO, DHT) can be completely reassigned from the Web Captive Portal without touching the code.*
+
+### Initial Deployment (Via Captive Portal):
+1. Flash the compiled source code via USB for the first time using your preferred IDE.
+2. The ESP32 will format its internal filesystem (LittleFS) and, upon not detecting valid home credentials, will open an Access Point (AP).
+3. Search on your phone or PC for the open Wi-Fi network: **`Esp32BlascoOS_Setup`** and connect to it.
+4. A web wizard will open automatically. Follow the steps to enter your local router password, configure your GPIO pins, and define your web admin credentials.
+5. Upon clicking Save, the ESP32 will reboot, shut down AP mode, and connect to your home router transparently.
+6. Open the Serial console at `115200 baud` or check the LCD screen to discover its newly assigned local IP.
+7. Open that IP in your web browser. Enjoy the environment!
 
 ---
 
 ## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:settings.svg?color=white"><img src="https://api.iconify.design/lucide:settings.svg?color=black" width="26" align="center"></picture> Compilation Configuration (Arduino IDE)
 
-> **System Access:** The default username and password are set to **`admin` / `blasco`**. This combination can be modified in the main .ino file.
+To ensure the project compiles correctly and the Web UI has enough space for the LittleFS database, it is **mandatory** to apply the following settings in the Arduino IDE **Tools** menu. 
+
+*This configuration is optimized for **ESP32-S3 (N16R8)** boards featuring 16MB of Flash and 8MB of PSRAM.*
 
 | Configuration Parameter | Exact Required Value |
 | :--- | :--- |
@@ -215,7 +198,7 @@ Integrated local climate data acquisition module.
 | **USB DFU On Boot** | `Disabled` |
 | **Erase All Flash Before Sketch Upload** | `Disabled` |
 | **Events Run On** | `Core 1` |
-| **Flash Mode** | `DIO 80MHz` |
+| **Flash Mode** | `QIO 80MHz` |
 | **Flash Size** | `16MB (128Mb)` |
 | **JTAG Adapter** | `Disabled` |
 | **Arduino Runs On** | `Core 1` |
@@ -260,7 +243,7 @@ Below is the execution environment of the Operating System. Click on the dropdow
 </details>
 
 <details>
-<summary><b>Authentication Login</b></summary>
+<summary><b>Authentication Login & Initial Configuration</b></summary>
 <br>
 
 <p><i>Dark Theme</i></p>
@@ -272,9 +255,12 @@ Below is the execution environment of the Operating System. Click on the dropdow
 
 ---
 
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:user.svg?color=white"><img src="https://api.iconify.design/lucide:user.svg?color=black" width="26" align="center"></picture> Contact Me
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:mail.svg?color=white"><img src="https://api.iconify.design/lucide:mail.svg?color=black" width="26" align="center"></picture> Contact & Sponsorship
 
 Developed with passion by **Ruben Blasco Armengod**.
 
-* **GitHub:** [rubenblascoa](https://github.com/rubenblascoa)
+If you are interested in sponsoring the continuous expansion of this project, collaborating on custom hardware motherboard layouts, or embedding new sensors into the multi-tasking core, please reach out through any of the following technical channels:
+
+* **GitHub:** [@rubenblascoa](https://github.com/rubenblascoa)
+* **Instagram:** [@rubenblascoa](https://instagram.com/rubenblascoa)
 * **Email:** rubenblascoarmengod@gmail.com
