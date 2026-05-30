@@ -35,29 +35,29 @@
 /**
  * @brief Agrupa y transmite la pantalla del menú de inicio junto con el reporte extendido de telemetría.
  */
-void mostrarMenuPrincipal(); // [cite: 535, 626]
+void mostrarMenuPrincipal(); // 
 
 /**
  * @brief Procesa el comando ingresado en el menú inicial para conmutar entre los módulos de hardware.
  * @param entrada Cadena de texto limpia con el carácter o comando del usuario.
  */
-void procesarMenuPrincipal(String entrada); // [cite: 535, 640]
+void procesarMenuPrincipal(String entrada); // 
 
 /**
  * @brief Renderiza el panel específico de la estación de clonación NFC mostrando el estado de la memoria RAM.
  */
-void mostrarMenuNFC(); // [cite: 535, 642]
+void mostrarMenuNFC(); // 
 
 /**
  * @brief Filtra e interpreta los comandos ingresados por el usuario dentro del entorno del módulo RFID.
  * @param entrada Cadena de comando ingresada desde el Telnet o la interfaz web.
  */
-void procesarEntradaNFC(String entrada); // [cite: 535, 648]
+void procesarEntradaNFC(String entrada); // 
 
 /**
  * @brief Dibuja las opciones disponibles para el control del radar ultrasónico de distancia HC-SR04.
  */
-void mostrarMenuUltrasonidos(); // [cite: 535, 663]
+void mostrarMenuUltrasonidos(); // 
 
 /**
  * @brief Renderiza el panel del sensor de temperatura y humedad DHT11.

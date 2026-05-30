@@ -37,26 +37,85 @@
  * @param coreID Identificador numérico del núcleo a evaluar (0 o 1).
  * @return uint32_t Porcentaje entero de uso real de CPU (0 a 100%).
  */
-uint32_t calcularUsoCPU(int coreID); // [cite: 524]
+uint32_t calcularUsoCPU(int coreID); // 
 
 /**
  * @brief Construye una cadena formateada con las horas, minutos y segundos transcurridos desde el arranque.
  * @return String Cadena de texto con formato de reloj "HH:MM:SS".
  */
-String obtenerUptime(); // [cite: 531]
+String obtenerUptime(); // 
 
 /**
  * @brief Consulta el chip de tiempo interno para formatear la fecha y hora obtenida por el servidor NTP.
  * @return String Cadena de texto con formato de calendario estándar "DD/MM/YYYY HH:MM".
  */
-String obtenerFechaHora(); // [cite: 532, 534]
+String obtenerFechaHora(); // 
 
 /**
  * @brief Abre el volumen LittleFS en modo adjuntar y añade una línea CSV con las métricas actuales.
  */
-void guardarEnHistorial(); // [cite: 552]
+void guardarEnHistorial(); // 
 
 /**
  * @brief Orquesta la paginación de datos del sistema en la pantalla LCD I2C protegiendo el bus mediante Mutex.
  */
-void actualizarLCD(); // [cite: 560]
+void actualizarLCD(); // 
+
+// ============================================================================
+// FUNCIONES DE PERSISTENCIA NVS (Credenciales WiFi)
+// ============================================================================
+
+/**
+ * @brief Guarda SSID y contraseña WiFi en la partición NVS.
+ * @param ssid Nombre de la red.
+ * @param pass Contraseña de la red.
+ * @return true si se guardó correctamente.
+ */
+bool guardarCredenciales(const char* ssid, const char* pass);
+
+/**
+ * @brief Carga SSID y contraseña WiFi desde NVS.
+ * @param ssid String de salida con el SSID.
+ * @param pass String de salida con la contraseña.
+ * @return true si existían credenciales guardadas.
+ */
+bool cargarCredenciales(String& ssid, String& pass);
+
+/**
+ * @brief Borra las credenciales WiFi de la NVS.
+ * @return true si se borraron correctamente.
+ */
+bool borrarCredenciales();
+
+/**
+ * @brief Guarda la configuracion de pines hardware en NVS.
+ */
+bool guardarConfigHardware(int nfcRst, int nfcSs, int trigPin, int echoPin, int dhtPin);
+
+/**
+ * @brief Carga la configuracion de pines hardware desde NVS y actualiza las variables globales.
+ * @return true si existia configuracion guardada.
+ */
+bool cargarConfigHardware();
+
+/**
+ * @brief Guarda usuario y contraseña web en NVS.
+ */
+bool guardarCredencialesWeb(String user, String pass);
+
+/**
+ * @brief Carga las credenciales web desde NVS y actualiza webUser/webPass.
+ * @return true si existian credenciales guardadas.
+ */
+bool cargarCredencialesWeb();
+
+/**
+ * @brief Guarda un flag en NVS indicando que el setup inicial se completó.
+ */
+bool guardarSetupCompletado();
+
+/**
+ * @brief Verifica si el setup inicial ya se completó.
+ * @return true si ya se configuró el WiFi al menos una vez.
+ */
+bool setupCompletado();

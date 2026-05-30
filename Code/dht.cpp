@@ -44,18 +44,21 @@ static bool leerDHT11Raw(float &temp, float &hum) {
   pinMode(DHT_PIN, INPUT_PULLUP);
   delayMicroseconds(40);       // Espera a que el sensor tome el control del bus
 
+  // Pequeña pausa para que el bus se asiente tras el cambio a INPUT
+  delayMicroseconds(5);
+
   // --- Deshabilitar interrupciones durante la lectura crítica de temporización ---
   // En ESP32-S3 a 240MHz, las interrupciones del WiFi/FreeRTOS alteran micros()
   noInterrupts();
 
   // --- Respuesta del sensor: esperar LOW (80us) luego HIGH (80us) ---
-  // Timeout ampliado a 200us para dar margen al DHT11 (lento vs DHT22)
+  // Timeout generoso para dar margen al DHT11 (lento vs DHT22)
   unsigned long t = micros();
-  while (digitalRead(DHT_PIN) == HIGH) { if (micros() - t > 200) { interrupts(); return false; } } // sensor tira LOW
+  while (digitalRead(DHT_PIN) == HIGH) { if (micros() - t > 300) { interrupts(); return false; } }
   t = micros();
-  while (digitalRead(DHT_PIN) == LOW)  { if (micros() - t > 100) { interrupts(); return false; } } // sensor suelta a HIGH
+  while (digitalRead(DHT_PIN) == LOW)  { if (micros() - t > 120) { interrupts(); return false; } }
   t = micros();
-  while (digitalRead(DHT_PIN) == HIGH) { if (micros() - t > 100) { interrupts(); return false; } } // sensor tira LOW de nuevo = inicio de datos
+  while (digitalRead(DHT_PIN) == HIGH) { if (micros() - t > 120) { interrupts(); return false; } }
 
   // --- Leer 40 bits (5 bytes) ---
   for (int i = 0; i < 40; i++) {
@@ -123,11 +126,14 @@ float leerHumedad() {
 // ============================================================================
 bool actualizarDHT() {
   float t, h;
-  if (!leerDHT11Raw(t, h)) {
-    Terminal.println("[DHT] Error: Lectura compuesta fallida, datos descartados.");
-    return false;
+  for (int intento = 0; intento < 2; intento++) {
+    if (leerDHT11Raw(t, h)) {
+      temperaturaActual = t;
+      humedadActual     = h;
+      return true;
+    }
+    if (intento == 0) delay(1000);
   }
-  temperaturaActual = t;
-  humedadActual     = h;
-  return true;
+  Terminal.println("[DHT] Error: Lectura compuesta fallida, datos descartados.");
+  return false;
 }

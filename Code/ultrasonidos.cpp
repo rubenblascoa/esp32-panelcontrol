@@ -22,31 +22,65 @@
 
 /**
  * @file ultrasonidos.cpp
- * @brief Implementación física del rebote acústico y conversión espacio-temporal.
+ * @brief Implementación del sensor HC-SR04 con interrupción no bloqueante.
+ *        Reemplaza pulseIn() por interrupción en ECHO para no bloquear FreeRTOS.
  */
-#include "ultrasonidos.h" // Vinculación con su header correspondiente
+#include "ultrasonidos.h"
 
-// ============================================================================
-// CAPTURA DE ECO Y CONVERSIÓN ESCALAR DE DISTANCIA
-// ============================================================================
-long medirDistanciaFisica() {             
-  // Paso 1: Estabilización drástica de la línea de transmisión eléctrica forzando un estado bajo limpio [cite: 1352]
-  digitalWrite(TRIG_PIN, LOW); // [cite: 1352]
-  delayMicroseconds(2);        // Espera de 2 microsegundos para asentar el pin digital [cite: 1353]
-  
-  // Paso 2: Generación estricta de la ráfaga de disparo eléctrico hacia el transductor emisor [cite: 1353]
-  digitalWrite(TRIG_PIN, HIGH); // Eleva la línea a 3.3V / 5V [cite: 1353]
-  delayMicroseconds(10);        // Duración exacta del pulso exigida por el datasheet del HC-SR04 [cite: 1353]
-  digitalWrite(TRIG_PIN, LOW);  // Corta la transmisión sónica bajando el pin a cero [cite: 1354]
-  
-  // Paso 3: Medición bloqueante del ancho del pulso recibido en el pin receptor [cite: 1354]
-  // Configuramos un Timeout de 30,000 microsegundos (30ms), límite físico para rebotes a más de 4 metros [cite: 1354]
-  long duracion = pulseIn(ECHO_PIN, HIGH, 30000); // [cite: 1354]
-  
-  // Paso 4: Detección de pérdida de rebote sónico (El eco nunca regresó y el hardware superó el timeout) [cite: 1355]
-  if (duracion == 0) return -1; // Retorna código de desbordamiento (Out of bounds) [cite: 1355]
-  
-  // Paso 5: Ecuación física de conversión: (Tiempo microsegundos * Velocidad del sonido (0.0343 cm/us)) / 2 [cite: 1356]
-  // Dividimos entre 2 porque el haz sónico recorre dos veces la distancia (ida hasta el objeto y vuelta al receptor) [cite: 1356]
-  return duracion * 0.034 / 2; // Retorna la distancia euclidiana final mapeada en centímetros [cite: 1356]
+// Variables compartidas volátiles para la ISR
+static volatile unsigned long ecoStart = 0;
+static volatile unsigned long ecoDuration = 0;
+static volatile bool ecoCompletado = false;
+
+// Estado interno de la máquina de estados
+static bool esperandoEco = false;
+static unsigned long trigMicros = 0;
+static unsigned long ultimoTrigMs = 0;
+
+// ISR para CHANGE en ECHO_PIN — detecta flanco de subida o bajada
+void IRAM_ATTR ecoISR() {
+    if (digitalRead(ECHO_PIN) == HIGH) {
+        ecoStart = micros();
+    } else {
+        ecoDuration = micros() - ecoStart;
+        ecoCompletado = true;
+    }
+}
+
+long medirDistanciaFisica() {
+    if (!esperandoEco) {
+        if (millis() - ultimoTrigMs < 200) return -1;
+
+        digitalWrite(TRIG_PIN, LOW);
+        delayMicroseconds(2);
+        digitalWrite(TRIG_PIN, HIGH);
+        delayMicroseconds(10);
+        digitalWrite(TRIG_PIN, LOW);
+
+        ecoCompletado = false;
+        ecoDuration = 0;
+        trigMicros = micros();
+        attachInterrupt(digitalPinToInterrupt(ECHO_PIN), ecoISR, CHANGE);
+        esperandoEco = true;
+        ultimoTrigMs = millis();
+        return -1;
+    }
+
+    if (ecoCompletado) {
+        ecoCompletado = false;
+        esperandoEco = false;
+        detachInterrupt(digitalPinToInterrupt(ECHO_PIN));
+
+        if (ecoDuration == 0) return -2;
+
+        return ecoDuration * 0.034 / 2;
+    }
+
+    if (micros() - trigMicros > 30000) {
+        esperandoEco = false;
+        detachInterrupt(digitalPinToInterrupt(ECHO_PIN));
+        return -2;
+    }
+
+    return -1;
 }

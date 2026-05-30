@@ -28,106 +28,156 @@
 // ============================================================================
 // INCLUSIÓN DE COMPONENTES MODULARES (Capa de abstracción propia)
 // ============================================================================
-#include "config.h"      // Carga todas las librerías base, macros de pines y variables globales compartidas [cite: 690, 692]
-#include "tareas.h"      // Habilita los lazos infinitos asíncronos taskCore0 y taskCore1 de FreeRTOS [cite: 1367]
-#include "web_server.h"  // Expone el motor del servidor web y gestores de sockets [cite: 1230]
-#include "utils.h"       // Proporciona herramientas de control LCD, base de datos e historial [cite: 1246, 1275]
+#include "config.h"      // Carga todas las librerías base, macros de pines y variables globales compartidas 
+#include "tareas.h"      // Habilita los lazos infinitos asíncronos taskCore0 y taskCore1 de FreeRTOS 
+#include "web_server.h"  // Expone el motor del servidor web y gestores de sockets 
+#include "utils.h"       // Proporciona herramientas de control LCD, base de datos e historial 
+#include "sd_card.h"     // Proporciona funciones para la tarjeta SD
+#include <Preferences.h>
+
 
 // ============================================================================
 // CONFIGURACIÓN INICIAL DE HARDWARE EN ARRANQUE (RAÍZ DE HARDWARE)
 // ============================================================================
-void setup() {  //
+void setup() {  
   // 1. Apertura inmediata del puerto serie de depuración física a la velocidad estándar de 115200 baudios
   Serial.begin(115200);  //
-  delay(2000);           // Ventana de protección eléctrica de 2 segundos para estabilizar voltajes en frío [cite: 1358]
+  delay(2000);           // Ventana de protección eléctrica de 2 segundos para estabilizar voltajes en frío 
 
-  // 2. Inicialización prioritaria del bus de comunicación I2C (Pines SDA->GPIO 8 | SCL->GPIO 9) [cite: 1358, 1359]
+  // Cargar configuración de hardware y credenciales web desde NVS
+  cargarConfigHardware();
+  cargarCredencialesWeb();
+  Serial.printf("[CONFIG] Pines: NFC RST=%d CS=%d | HC-SR04 TRIG=%d ECHO=%d | DHT=%d\n",
+    RST_PIN, SS_PIN, TRIG_PIN, ECHO_PIN, DHT_PIN);
+
+  // 2. Inicialización prioritaria del bus de comunicación I2C (Pines SDA->GPIO 8 | SCL->GPIO 9) 
   Wire.begin(8, 9);  // Abre los canales físicos de datos
 
   // Creación del semáforo Mutex de FreeRTOS para blindar el acceso compartido al hardware I2C entre núcleos
-  i2cMutex = xSemaphoreCreateMutex();  // [cite: 1359]
+  i2cMutex = xSemaphoreCreateMutex();  // 
 
   // Secuencia estricta de doble inicialización del chip controlador del display LCD
-  lcd.init();       // Primer disparo de reset eléctrico [cite: 1359]
-  lcd.init();       // Segundo disparo forzado para asentar los registros del bus sin usar retrasos delay [cite: 1359]
-  lcd.backlight();  // Encendemos los transistores de la retroiluminación de la pantalla LCD [cite: 1359]
+  lcd.init();       // Primer disparo de reset eléctrico 
+  lcd.init();       // Segundo disparo forzado para asentar los registros del bus sin usar retrasos delay 
+  lcd.backlight();  // Encendemos los transistores de la retroiluminación de la pantalla LCD 
 
-  // Imprimimos el banner de inicio del sistema operativo Zenith en la primera columna y fila [cite: 1359]
-  lcd.setCursor(0, 0);            // [cite: 1359]
-  lcd.print("ZENITH SYSTEM...");  // [cite: 1359]
+  
+  // Imprimimos el banner de inicio del sistema operativo Zenith en la primera columna y fila 
+  lcd.setCursor(0, 0);            // 
+  lcd.print("ZENITH SYSTEM...");  // 
+
 
   // 3. Volcado de diagnóstico hardware inicial por el puerto serie serial para telemetría física de taller
-  Serial.printf("📦 Flash: %d MB\n", ESP.getFlashChipSize() / (1024 * 1024));  // Reporta tamaño físico de la ROM Flash [cite: 1360]
-  Serial.printf("🧠 PSRAM: %d MB\n", ESP.getPsramSize() / (1024 * 1024));   // Reporta tamaño neto de la RAM externa [cite: 1360]
-  Serial.println("\n\n--- INICIANDO CHIVATO ---");                            // Mensaje de control de arranque [cite: 1361]
-  Serial.flush();                                                             // Fuerza la salida inmediata de los bytes acumulados por los cables de datos tx/rx [cite: 1361]
+  Serial.printf("📦 Flash: %d MB\n", ESP.getFlashChipSize() / (1024 * 1024));  // Reporta tamaño físico de la ROM Flash 
+  Serial.printf("🧠 PSRAM: %d MB\n", ESP.getPsramSize() / (1024 * 1024));   // Reporta tamaño neto de la RAM externa 
+  Serial.println("\n\n--- INICIANDO CHIVATO ---");                            // Mensaje de control de arranque 
+  Serial.flush();                                                             // Fuerza la salida inmediata de los bytes acumulados por los cables de datos tx/rx 
 
-  // 4. Reserva dinámica de espacio en la memoria RAM para albergar los objetos servidores asíncronos [cite: 1361]
-  Serial.println("[PASO 1] Creando Servidor en RAM...");  // [cite: 1361]
-  Serial.flush();                                         // [cite: 1362]
-  server = new AsyncWebServer(80);                        // Instanciación del servidor HTTP apuntando al puerto por defecto de internet (80) [cite: 1362]
-  ws = new AsyncWebSocket("/ws");                         // Instanciación del túnel de tiempo real sobre la ruta de sockets /ws [cite: 1362]
+  // 3b. Creación de la cola de comandos FreeRTOS para comunicación entre cores
+  cmdQueue = xQueueCreate(10, sizeof(char*));
+  
+  // 4. Reserva dinámica de espacio en la memoria RAM para albergar los objetos servidores asíncronos 
+  Serial.println("[PASO 1] Creando Servidor en RAM...");  // 
+  Serial.flush();                                         // 
+  server = new AsyncWebServer(80);                        // Instanciación del servidor HTTP apuntando al puerto por defecto de internet (80) 
+  ws = new AsyncWebSocket("/ws");                         // Instanciación del túnel de tiempo real sobre la ruta de sockets /ws 
 
-  // 5. Configuración eléctrica e industrial del mapa de pines generales de entrada y salida (GPIOs) [cite: 1362]
-  Serial.println("[PASO 2] Servidor OK. Configurando Pines...");  // [cite: 1362]
+  // 5. Configuración eléctrica e industrial del mapa de pines generales de entrada y salida (GPIOs) 
+  Serial.println("[PASO 2] Servidor OK. Configurando Pines...");  // 
   Serial.flush();                                                 //
-  pinMode(LED_PIN, OUTPUT);                                       // Configura el pin del diodo LED direccionable como salida de corriente [cite: 1362]
-  pinMode(TRIG_PIN, OUTPUT);                                      // Configura el pin disparador del ultrasonidos como salida de pulsos [cite: 1362]
-  pinMode(ECHO_PIN, INPUT);                                       // Configura el pin receptor del eco acústico como entrada de impedancia [cite: 1363]
+  pinMode(LED_PIN, OUTPUT);                                       // Configura el pin del diodo LED direccionable como salida de corriente 
+  pinMode(TRIG_PIN, OUTPUT);                                      // Configura el pin disparador del ultrasonidos como salida de pulsos 
+  pinMode(ECHO_PIN, INPUT);                                       // Configura el pin receptor del eco acústico como entrada de impedancia 
 
-  // 6. Activación del módem interno de radiofrecuencia e inicio de la negociación WiFi [cite: 1363]
-  Serial.println("[PASO 3] Pines OK. Encendiendo WiFi...");  // [cite: 1363]
-  Serial.flush();                                            //
-  WiFi.mode(WIFI_STA);                                       // Forzamos al procesador de red a trabajar bajo el protocolo de Estación cliente [cite: 1363]
-  WiFi.begin(ssid, password);                                // Disparamos la trama de autenticación con las credenciales cifradas de config.cpp [cite: 1363]
+  // 6. Activación del módem e inicio WiFi con NVS (credenciales guardadas o AP) 
+  Serial.println("[PASO 3] Pines OK. Cargando credenciales WiFi...");
+  Serial.flush();
 
-  // Sincronización horaria civil configurando los servidores de tiempo atómico internacionales (NTP) para España [cite: 1364]
-  configTime(3600, 0, "pool.ntp.org", "time.nist.gov");  // GMT+1 base; DST=0 porque la regla horaria de España se gestiona con setenv TZ en iniciarServidorWeb
+  String credSSID, credPass;
+  bool credencialesOK = cargarCredenciales(credSSID, credPass);
 
-  // Bucle de espera bloqueante controlado para congelar el inicio hasta certificar enlace inalámbrico estable [cite: 1364]
-  Serial.println("[PASO 4] Esperando conexion...");  // [cite: 1364]
-  Serial.flush();                                    // [cite: 1364]
-  while (WiFi.status() != WL_CONNECTED) {            // Mientras el módem reporte que no hay conexión [cite: 1365]
-    delay(500);                                      // Pausa controlada de medio segundo entre intentos [cite: 1365]
-    Serial.print(".");                               // Inyecta puntos suspensivos por consola como chivato visual [cite: 1365]
-    Serial.flush();                                  // Despacha el byte [cite: 1365]
+  if (credencialesOK && credSSID.length() > 0) {
+    Serial.printf("[WiFi] Credenciales encontradas: %s. Conectando en modo STA...\n", credSSID.c_str());
+    // Conectar en modo STA puro: sin AP activo no hay interferencia de canal ni confusion de DHCP
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(credSSID.c_str(), credPass.c_str());
+    configTime(3600, 0, "pool.ntp.org", "time.nist.gov");
+
+    Serial.println("[PASO 4] Esperando conexion (max 20s)...");
+    Serial.flush();
+    int intentos = 0;
+    while (WiFi.status() != WL_CONNECTED && intentos < 40) {  // 40 x 500ms = 20 segundos max
+      delay(500);
+      Serial.print(".");
+      Serial.flush();
+      intentos++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\n[OK] WiFi Conectado!");
+      Serial.print("[IP]: ");
+      Serial.println(WiFi.localIP());
+      modoConfiguracion = false;
+    } else if (setupCompletado()) {
+      Serial.println("\n[WiFi] No conectado a los 20s, pero ya configurado antes. AP activo solo para acceso local.");
+      modoConfiguracion = false;
+      WiFi.mode(WIFI_AP_STA);
+      WiFi.softAP("Esp32BlascoOS_Setup");
+      dnsServer.start(53, "*", WiFi.softAPIP());
+    } else {
+      Serial.println("\n[WARN] No se pudo conectar. Iniciando modo AP para reconfigurar...");
+      modoConfiguracion = true;
+      WiFi.mode(WIFI_AP_STA);
+      WiFi.softAP("Esp32BlascoOS_Setup");
+      dnsServer.start(53, "*", WiFi.softAPIP());
+      Serial.println("[AP] Esp32BlascoOS_Setup activo en 192.168.4.1");
+    }
+  } else {
+    Serial.println("[WiFi] No hay credenciales. Iniciando modo AP de configuracion...");
+    modoConfiguracion = true;
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP("Esp32BlascoOS_Setup");
+    dnsServer.start(53, "*", WiFi.softAPIP());
+    Serial.println("[AP] Esp32BlascoOS_Setup activo en 192.168.4.1");
   }
 
-  // Enlace establecido exitosamente [cite: 1365]
-  Serial.println("\n[OK] WiFi Conectado!");  // [cite: 1365]
-  Serial.print("[IP]: ");                    // [cite: 1366]
-  Serial.println(WiFi.localIP());            // Imprime la dirección IPv4 asignada por el enrutador en tu red de área local [cite: 1366]
+  // 7. Arranque de los servicios y escuchas de periféricos rápidos 
+  ArduinoOTA.begin();             // Inicializa el servicio de escucha inalámbrica para carga de firmwares de red 
 
-  // 7. Arranque de los servicios y escuchas de periféricos rápidos [cite: 1366]
-  ArduinoOTA.begin();             // Inicializa el servicio de escucha inalámbrica para carga de firmwares de red [cite: 1366]
-  SPI.begin(18, 13, 11, SS_PIN);  // Inicializa el bus SPI hardware asignando los pines CLK->18, MISO->13 y MOSI->11 [cite: 1366]
-  mfrc522.PCD_Init();             // Inicializa los registros lógicos y la antena inductiva del chip RC522 [cite: 1366]
+  mfrc522 = new MFRC522(SS_PIN, RST_PIN);
+  SPI.begin(18, 13, 11, SS_PIN);  // Inicializa el bus SPI hardware asignando los pines CLK->18, MISO->13 y MOSI->11 
+  mfrc522->PCD_Init();             // Inicializa los registros lógicos y la antena inductiva del chip RC522 
 
-  // 8. ASIGNACIÓN ASÍNCRONA DE TAREAS A LOS NÚCLEOS FÍSICOS (Planificador FreeRTOS) [cite: 1366]
-  Serial.println("[..] Iniciando núcleos de proceso...");  // [cite: 1366]
+  // 8. INICIALIZACIÓN DE LA TARJETA SD (deshabilitada por defecto; descomentar pines en config.h) 
+  #ifdef SD_CS_PIN
+  Serial.println("[..] Inicializando tarjeta SD...");
+  inicializarSD();
+  #endif
 
-  // Enganchamos la tarea de red taskCore0 en el Núcleo 0 (Core 0), asignándole 8KB de pila y prioridad 1 [cite: 1367]
-  xTaskCreatePinnedToCore(taskCore0, "RedTask", 8192, NULL, 1, NULL, 0);  // [cite: 1367]
-  delay(500);                                                             // Margen de gracia crítico de 500ms para permitir al sistema operativo asentar el hilo cero [cite: 1367]
+  // 10. ASIGNACIÓN ASÍNCRONA DE TAREAS A LOS NÚCLEOS FÍSICOS (Planificador FreeRTOS) 
+  Serial.println("[..] Iniciando núcleos de proceso...");  // 
 
-  // Enganchamos la tarea de hardware taskCore1 en el Núcleo 1 (Core 1), asignándole 8KB de pila y prioridad 1 [cite: 1367]
-  xTaskCreatePinnedToCore(taskCore1, "AppTask", 8192, NULL, 1, NULL, 1);  // [cite: 1367]
+  // Enganchamos la tarea de red taskCore0 en el Núcleo 0 (Core 0), asignándole 8KB de pila y prioridad 1 
+  xTaskCreatePinnedToCore(taskCore0, "RedTask", 16384, NULL, 1, NULL, 0);
+  delay(500);
 
-  // Notificación de culminación exitosa de los servicios de arranque básicos [cite: 1368]
-  Serial.println("[EXITO] Todo el sistema esta ONLINE.");  // [cite: 1368]
+  xTaskCreatePinnedToCore(taskCore1, "AppTask", 16384, NULL, 1, NULL, 1);
 
-  // Reporte de diagnóstico térmico y de memorias post-arranque en la consola de telemetría de taller [cite: 1368]
-  Serial.println("\n--- INICIANDO SECUENCIA DE ARRANQUE ---");                // [cite: 1368]
-  Serial.printf("📦 Flash: %d MB\n", ESP.getFlashChipSize() / (1024 * 1024));  // [cite: 1369]
-  Serial.printf("🧠 PSRAM: %d MB\n", ESP.getPsramSize() / (1024 * 1024));   // [cite: 1369]
-  Serial.println("---------------------------------------");                  // [cite: 1369]
+  // Notificación de culminación exitosa de los servicios de arranque básicos 
+  Serial.println("[EXITO] Todo el sistema esta ONLINE.");  // 
 
-  // 9. Configuración cromática inicial del LED indicador RGB integrado [cite: 1369]
-  pixel.begin();            // Enciende los controladores internos de la librería [cite: 1369]
-  pixel.setBrightness(50);  // Atenúa la potencia de salida al 50% para proteger la vista de destellos intensos [cite: 1370]
+  // Reporte de diagnóstico térmico y de memorias post-arranque en la consola de telemetría de taller 
+  Serial.println("\n--- INICIANDO SECUENCIA DE ARRANQUE ---");                // 
+  Serial.printf("📦 Flash: %d MB\n", ESP.getFlashChipSize() / (1024 * 1024));  // 
+  Serial.printf("🧠 PSRAM: %d MB\n", ESP.getPsramSize() / (1024 * 1024));   // 
+  Serial.println("---------------------------------------");                  // 
 
-  delay(100);           // Pausa milimétrica de estabilización eléctrica terminal [cite: 1370]
-  sistemaListo = true;  // Eleva el interruptor maestro final: Las tareas paralelas de FreeRTOS rompen su barrera [cite: 1370]
+  // 11. Configuración cromática inicial del LED indicador RGB integrado 
+  pixel.begin();            // Enciende los controladores internos de la librería 
+  pixel.setBrightness(50);  // Atenúa la potencia de salida al 50% para proteger la vista de destellos intensos 
+
+  delay(100);           // Pausa milimétrica de estabilización eléctrica terminal 
+  sistemaListo = true;  // Eleva el interruptor maestro final: Las tareas paralelas de FreeRTOS rompen su barrera 
 }
 
 // ============================================================================
@@ -137,6 +187,6 @@ void loop() {
   // El ciclo repetitivo nativo de Arduino queda completamente anulado.
   // Al invocar vTaskDelete pasando un argumento de tipo NULL, forzamos al programador multinúcleo
   // a auto-destruir el lazo loop() clásico, liberando de forma inmediata todos sus recursos de memoria RAM
-  // y delegando el 100% del silicio a los dos hilos asíncronos paralelos distribuidos. [cite: 1371, 1372]
-  vTaskDelete(NULL);  // [cite: 1372]
+  // y delegando el 100% del silicio a los dos hilos asíncronos paralelos distribuidos. 
+  vTaskDelete(NULL);  // 
 }

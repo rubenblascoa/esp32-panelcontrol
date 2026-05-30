@@ -26,10 +26,10 @@
  */
 #include "web_server.h"
 #include "web_pages.h"
-#include "web_pages.h"
 #include "terminal.h"
 #include "menus.h"
 #include "utils.h"
+#include "sd_card.h"
 #include <time.h>
 #include <vector>
 #include <algorithm>
@@ -38,51 +38,46 @@
 // VALIDACIÓN DE SESIÓN POR COOKIE DE SEGURIDAD
 // ============================================================================
 bool estaLogueado(AsyncWebServerRequest *request) {
-  // Comprobamos de forma estricta si la solicitud entrante contiene el header de Cookies
   if (request->hasHeader("Cookie")) {
-    String cookie = request->header("Cookie"); // Extraemos el string completo de cookies del cliente
-    
-    // Verificamos que el token del sistema no esté vacío y que la cookie contenga la clave ZENITH_SESSION vinculada a él
+    String cookie = request->header("Cookie");
     if (tokenSesionActiva != "" && cookie.indexOf("ZENITH_SESSION=" + tokenSesionActiva) != -1) {
-      return true; // Autenticación válida: El usuario tiene permiso de visualización
+      return true;
     }
   }
-  return false; // Acceso denegado de forma por defecto si no supera la validación
+  return false;
 }
 
 // ============================================================================
 // MANEJADOR DE EVENTOS ASÍNCRONOS DEL TÚNEL WEBSOCKET
 // ============================================================================
 void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) { 
-  // Caso 1: Se ha conectado un nuevo cliente web a la URL del socket
   if (type == WS_EVT_CONNECT) {   
-    // Protección anti-desbordamiento de memoria (OOM): Rechaza conexiones si superamos el límite configurado
     if (ws->count() >= MAX_WEBSOCKET_CLIENTS) { 
-        client->close(); // Cierra el socket del cliente intruso de manera inmediata
-        return;          // Aborta el procesamiento
+        client->close();
+        return;
     }
-    // Activar logs web inmediatamente para que el menú se vea sin esperar 30s
     permitirWebLog = true;
-    Terminal.println("\n[SISTEMA] Dispositivo conectado al SO Blasco mediante Web-Telnet."); // Inyecta log en los canales
-    mostrarMenuPrincipal(); // Dibuja la consola del sistema de forma automática al usuario recién ingresado
-    
-    forzarTelemetria = true; // Activa el interruptor global para despachar el JSON de rendimiento sin esperar al ciclo de 5s
+    Terminal.println("\n[SISTEMA] Dispositivo conectado al SO Blasco mediante Web-Telnet.");
+    mostrarMenuPrincipal();
+    forzarTelemetria = true;
   } 
-  // Caso 2: Se recibe una trama de datos desde el navegador web del usuario
   else if (type == WS_EVT_DATA) { 
-    AwsFrameInfo *info = (AwsFrameInfo*)arg; // Mapeo de puntero a la estructura de control de fragmentación de red
-    
-    // Validamos que sea una trama de texto, que esté completa (final) y que el tamaño coincida con la longitud leída
+    AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) { 
-      data[len] = 0; // Inserción mandatoria del carácter nulo al final de la matriz para conversión segura a C-String
-      entradaWeb = String((char*)data); // Conversión del búfer de bytes a cadena dinámica de Arduino
-      entradaWeb.trim(); // Limpieza drástica de retornos de carro, tabuladores y espacios en blanco
+      char* cmd = (char*)malloc(len + 1);
+      if (!cmd) return;
+      memcpy(cmd, data, len);
+      cmd[len] = 0;
       
-      // Comando reservado del sistema para reinicio por software en caliente
-      if (entradaWeb == "reboot") {
-          ESP.restart(); // Ejecuta la interrupción nativa para resetear la placa base
+      char* end = cmd + len - 1;
+      while (end > cmd && (*end == ' ' || *end == '\n' || *end == '\r')) *end-- = 0;
+      if (strcmp(cmd, "reboot") == 0) {
+          free(cmd);
+          ESP.restart();
       } else {
-          hayEntradaWeb = true; // Eleva la bandera de sincronización para que el Core 1 procese la orden en su bucle
+          if (xQueueSend(cmdQueue, &cmd, 0) != pdTRUE) {
+              free(cmd);
+          }
       }
     }
   }
@@ -92,86 +87,85 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
 // CONFIGURACIÓN DE RUTAS DEL SERVIDOR HTTP
 // ============================================================================
 void iniciarServidorWeb() {       
-  // Forzar zona horaria España
   setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
   tzset();
 
-  // NOTA: La limpieza de backups se hace en gestionarCopiasSeguridad() desde setup()
-  // No duplicar aquí — gestionarCopiasSeguridad() ya limpia a max 10 en cada ejecución.
-
-  // Ruta 1: Vista pública del formulario de validación de identidad
   server->on("/login-page", HTTP_GET, [](AsyncWebServerRequest *request){ 
-    request->send_P(200, "text/html", login_html); // Envía el HTML estático comprimido en la Flash 
+    request->send_P(200, "text/html", login_html);
   });
 
-  // Ruta 2: Endpoint del método POST para el procesamiento de credenciales de acceso
   server->on("/login", HTTP_POST, [](AsyncWebServerRequest *request){
-      String u = "", p = ""; // Inicialización de variables locales temporales
-      
-      // Extracción segura de los parámetros enviados dentro del cuerpo del formulario
+      String u = "", p = "";
       if(request->hasParam("user", true)) u = request->getParam("user", true)->value(); 
       if(request->hasParam("password", true)) p = request->getParam("password", true)->value(); 
 
-      // Validación estricta contra las credenciales del sistema embebido
-      if(u == "admin" && p == "blasco") {
-          // Generación pseudo-aleatoria del token de sesión único mezclado con el uptime de CPU
+      if(u == webUser && p == webPass) {
           tokenSesionActiva = String(random(100000, 999999)) + String(millis()); 
           
-          AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", ""); // Creación de respuesta de redirección HTTP 302
-          response->addHeader("Location", "/?auth=true"); // Redirige al monitor inyectando la flag de pestaña activa
-          
-          // Inyección de la cookie de sesión protegida con flags modernas para mitigar ataques de secuestro (XSS/CSRF) 
+          AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", "");
+          response->addHeader("Location", "/?auth=true");
           response->addHeader("Set-Cookie", "ZENITH_SESSION=" + tokenSesionActiva + "; Path=/; HttpOnly; SameSite=Strict"); 
-          request->send(response); // Despacha la respuesta al navegador 
+          request->send(response); 
       } else {
-          request->redirect("/login-page?error=1"); // Redirección inmediata al formulario añadiendo la flag visual de error 
+          request->redirect("/login-page?error=1");
       }
   });
 
-  // Ruta 3: Endpoint para la revocación del token de acceso de usuario
   server->on("/logout", HTTP_GET, [](AsyncWebServerRequest *request){
-      tokenSesionActiva = ""; // Destrucción inmediata del token válido de la memoria RAM del ESP32
-      AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", ""); // Respuesta de redirección
-      response->addHeader("Location", "/login-page"); // Envía al usuario de vuelta a la página de login
-      
-      // Fuerza la caducidad inmediata de la cookie en el cliente sobreescribiéndola con una fecha del año 1970
+      tokenSesionActiva = "";
+      AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", "");
+      response->addHeader("Location", "/login-page");
       response->addHeader("Set-Cookie", "ZENITH_SESSION=deleted; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"); 
-      request->send(response); // Ejecuta el envío
+      request->send(response);
   });
 
-  // Ruta 4: Raíz del servidor - Dashboard de control principal (Protegido)
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request){ 
-    if(!estaLogueado(request)) { request->redirect("/login-page"); return; } // Guardia de seguridad
-    request->send_P(200, "text/html", index_html); // Envía la interfaz principal grabada en PROGMEM
+    if (modoConfiguracion && !conexionExitosa) {
+      request->send_P(200, "text/html", wifi_setup_html);
+      return;
+    }
+    if(!estaLogueado(request)) { request->redirect("/login-page"); return; }
+    request->send_P(200, "text/html", index_html);
   });
 
-  // Ruta 5: Endpoint del panel de visor histórico de la base de datos (Protegido)
   server->on("/db", HTTP_GET, [](AsyncWebServerRequest *request){ 
-    if(!estaLogueado(request)) { request->redirect("/login-page"); return; } // Guardia de seguridad
-    request->send_P(200, "text/html", db_html); // Envía la interfaz del visor CSV grabada en PROGMEM
+    if(!estaLogueado(request)) { request->redirect("/login-page"); return; }
+    request->send_P(200, "text/html", db_html);
   });
 
-  // Ruta 6: Descarga directa del archivo de registros físicos CSV acumulado (Protegido)
+  // ── /config (panel de configuración del sistema)
+  server->on("/config", HTTP_GET, [](AsyncWebServerRequest *request){
+    if(!estaLogueado(request)) { request->redirect("/login-page"); return; }
+    request->send_P(200, "text/html", config_html);
+  });
+
   server->on("/datos.csv", HTTP_GET, [](AsyncWebServerRequest *request){ 
-    if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; } // Bloqueo de intrusos 
-    request->send(LittleFS, "/datos.csv", "text/csv"); // Hace streaming directo del archivo desde el chip de memoria física 
+    if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; } 
+    #ifdef SD_CS_PIN
+    if (sdDisponible && existeCSV_SD()) {
+      request->send(SD, "/datos.csv", "text/csv");
+      return;
+    }
+    #endif
+    request->send(LittleFS, "/datos.csv", "text/csv");
   });
 
-  // Ruta 7: Endpoint administrativo para el borrado total de la BBDD (Protegido)
   server->on("/delete-db", HTTP_GET, [](AsyncWebServerRequest *request){
-      if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; } // Bloqueo de intrusos 
+      if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; } 
       
-      // Verificamos si el archivo de datos existe físicamente en el volumen de LittleFS 
-      if (LittleFS.exists("/datos.csv")) {
-          LittleFS.remove("/datos.csv"); // Ejecuta el borrado del archivo liberando los bloques ocupados en la Flash 
-          Serial.println("🧹 [SISTEMA] Base de datos borrada desde la web."); // Registra la acción por el puerto serial físico 
-          request->send(200, "text/plain", "OK"); // Devuelve confirmación HTTP al frontend 
+      if (sdDisponible && existeCSV_SD()) {
+          eliminarCSV_SD();
+          Serial.println("🧹 [SISTEMA] Base de datos borrada desde la web (SD).");
+          request->send(200, "text/plain", "OK");
+      } else if (LittleFS.exists("/datos.csv")) {
+          LittleFS.remove("/datos.csv");
+          Serial.println("🧹 [SISTEMA] Base de datos borrada desde la web.");
+          request->send(200, "text/plain", "OK");
       } else {
-          request->send(404, "text/plain", "Archivo no encontrado"); // Retorna error si el archivo ya fue eliminado 
+          request->send(404, "text/plain", "Archivo no encontrado");
       }
   });
 
-  // Ruta 8: Endpoint de información del sistema (Protegido)
   server->on("/api/system/info", HTTP_GET, [](AsyncWebServerRequest *request){
       if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; }
 
@@ -195,7 +189,233 @@ void iniciarServidorWeb() {
       request->send(200, "application/json", json);
   });
 
-  // Ruta 9: Importar un CSV que reemplaza /datos.csv y el sistema continúa guardando sobre él
+  // ── GET /api/config/info → IP, SSID, RSSI, pines actuales, usuario web
+  server->on("/api/config/info", HTTP_GET, [](AsyncWebServerRequest *request){
+    if(!estaLogueado(request)) { request->send(401, "application/json", "{\"error\":\"unauth\"}"); return; }
+    String json = "{";
+    json += "\"ip\":\""    + WiFi.localIP().toString() + "\",";
+    json += "\"ssid\":\""  + String(WiFi.SSID())       + "\",";
+    json += "\"rssi\":"    + String(WiFi.RSSI())        + ",";
+    json += "\"user\":\""  + webUser                    + "\",";
+    json += "\"pins\":{";
+    json += "\"nfcRst\":"  + String(RST_PIN)  + ",";
+    json += "\"nfcSs\":"   + String(SS_PIN)   + ",";
+    json += "\"trigPin\":" + String(TRIG_PIN) + ",";
+    json += "\"echoPin\":" + String(ECHO_PIN) + ",";
+    json += "\"dhtPin\":"  + String(DHT_PIN)  + "}}";
+    request->send(200, "application/json", json);
+  });
+
+  // ── POST /api/config/webcred → cambia usuario y contraseña web (valida pass actual)
+  server->on("/api/config/webcred", HTTP_POST,
+    [](AsyncWebServerRequest *request){
+      if(!estaLogueado(request)) { request->send(401, "application/json", "{\"error\":\"unauth\"}"); return; }
+      String* body = (String*)request->_tempObject;
+      if(!body) { request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Cuerpo vacio\"}"); return; }
+      StaticJsonDocument<512> doc;
+      if(deserializeJson(doc, *body)) { delete body; request->send(400, "application/json", "{\"status\":\"error\"}"); return; }
+      delete body;
+      const char* user    = doc["user"];
+      const char* curPass = doc["currentPass"];
+      const char* newPass = doc["newPass"];
+      if(!user || !curPass || !newPass) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Faltan campos\"}");
+        return;
+      }
+      if(webPass != String(curPass)) {
+        request->send(403, "application/json", "{\"status\":\"error\",\"message\":\"Contrasena actual incorrecta\"}");
+        return;
+      }
+      guardarCredencialesWeb(String(user), String(newPass));
+      request->send(200, "application/json", "{\"status\":\"ok\"}");
+    },
+    nullptr,
+    [](AsyncWebServerRequest *r, uint8_t *data, size_t len, size_t idx, size_t total){
+      if(idx == 0) r->_tempObject = new String((const char*)data, len);
+      else if(r->_tempObject) ((String*)r->_tempObject)->concat((const char*)data, len);
+    }
+  );
+
+  // ── POST /api/config/pins → guarda mapeo de pines GPIO en NVS
+  server->on("/api/config/pins", HTTP_POST,
+    [](AsyncWebServerRequest *request){
+      if(!estaLogueado(request)) { request->send(401, "application/json", "{\"error\":\"unauth\"}"); return; }
+      String* body = (String*)request->_tempObject;
+      if(!body) { request->send(400, "application/json", "{\"status\":\"error\"}"); return; }
+      StaticJsonDocument<256> doc;
+      if(deserializeJson(doc, *body)) { delete body; request->send(400, "application/json", "{\"status\":\"error\"}"); return; }
+      delete body;
+      int nfcRst  = doc["nfcRst"]  | RST_PIN;
+      int nfcSs   = doc["nfcSs"]   | SS_PIN;
+      int trigPin = doc["trigPin"] | TRIG_PIN;
+      int echoPin = doc["echoPin"] | ECHO_PIN;
+      int dhtPin  = doc["dhtPin"]  | DHT_PIN;
+      guardarConfigHardware(nfcRst, nfcSs, trigPin, echoPin, dhtPin);
+      request->send(200, "application/json", "{\"status\":\"ok\"}");
+    },
+    nullptr,
+    [](AsyncWebServerRequest *r, uint8_t *data, size_t len, size_t idx, size_t total){
+      if(idx == 0) r->_tempObject = new String((const char*)data, len);
+      else if(r->_tempObject) ((String*)r->_tempObject)->concat((const char*)data, len);
+    }
+  );
+
+  // ==========================================================================
+  // ENDPOINTS DE CONFIGURACIÓN INICIAL WIFI (Captive Portal)
+  // ==========================================================================
+
+  server->on("/api/wifi/scan", HTTP_GET, [](AsyncWebServerRequest *request){
+    static String ultimoScan = "[]";
+    int n = WiFi.scanComplete();
+
+    if (n >= 0) {
+      String resultado = "[";
+      for (int i = 0; i < n; i++) {
+        if (i > 0) resultado += ",";
+        String ssid = WiFi.SSID(i);
+        ssid.replace("\\", "\\\\");
+        ssid.replace("\"", "\\\"");
+        resultado += "{\"ssid\":\"" + ssid + "\",";
+        resultado += "\"rssi\":"  + String(WiFi.RSSI(i)) + ",";
+        resultado += "\"encryption\":" + String(WiFi.encryptionType(i)) + "}";
+      }
+      resultado += "]";
+      ultimoScan = resultado;
+      WiFi.scanDelete();
+      WiFi.scanNetworks(true);
+    } else if (n == WIFI_SCAN_FAILED) {
+      WiFi.scanNetworks(true);
+    }
+    request->send(200, "application/json", ultimoScan);
+  });
+
+  server->on("/api/wifi/configure", HTTP_POST,
+    [](AsyncWebServerRequest *request){
+      String* body = (String*)request->_tempObject;
+      if (!body || body->length() == 0) {
+        if (body) delete body;
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Cuerpo vacio\"}");
+        return;
+      }
+
+      DynamicJsonDocument doc(1024);
+      DeserializationError err = deserializeJson(doc, *body);
+      delete body;
+      if (err) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"JSON invalido\"}");
+        return;
+      }
+
+      const char* ssid = doc["ssid"];
+      const char* password = doc["password"];
+
+      if (!ssid || strlen(ssid) == 0) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"SSID requerido\"}");
+        return;
+      }
+      if (!password) password = "";
+
+      guardarCredenciales(ssid, password);
+      guardarSetupCompletado();
+
+      if (doc.containsKey("nfcRst") || doc.containsKey("nfcSs") ||
+          doc.containsKey("trigPin") || doc.containsKey("echoPin") || doc.containsKey("dhtPin")) {
+        int nfcRst  = doc["nfcRst"]  | RST_PIN;
+        int nfcSs   = doc["nfcSs"]   | SS_PIN;
+        int trigPin = doc["trigPin"] | TRIG_PIN;
+        int echoPin = doc["echoPin"] | ECHO_PIN;
+        int dhtPin  = doc["dhtPin"]  | DHT_PIN;
+        guardarConfigHardware(nfcRst, nfcSs, trigPin, echoPin, dhtPin);
+      }
+
+      if (doc.containsKey("webUser") && doc.containsKey("webPass")) {
+        const char* wu = doc["webUser"];
+        const char* wp = doc["webPass"];
+        if (strlen(wu) > 0 && strlen(wp) > 0) {
+          guardarCredencialesWeb(String(wu), String(wp));
+        }
+      }
+
+      conexionEnProgreso = true;
+      conexionExitosa = false;
+      conexionIP = "";
+      inicioConexion = millis();
+      WiFi.begin(ssid, password);
+
+      Serial.printf("[CONFIG] Conectando a %s...\n", ssid);
+      request->send(200, "application/json", "{\"status\":\"ok\"}");
+    },
+    nullptr,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (index == 0) {
+        request->_tempObject = new String((const char*)data, len);
+      } else if (request->_tempObject) {
+        ((String*)request->_tempObject)->concat((const char*)data, len);
+      }
+    }
+  );
+
+  server->on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request){
+    String json;
+    if (!conexionEnProgreso && conexionExitosa) {
+      json = "{\"status\":\"connected\",\"ip\":\"" + conexionIP + "\"}";
+    } else if (conexionEnProgreso && WiFi.status() == WL_CONNECTED) {
+      conexionExitosa = true;
+      conexionIP = WiFi.localIP().toString();
+      conexionEnProgreso = false;
+      modoConfiguracion = false;
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+      dnsServer.stop();
+      Serial.printf("[CONFIG] Conectado! IP: %s. AP desactivado.\n", conexionIP.c_str());
+      json = "{\"status\":\"connected\",\"ip\":\"" + conexionIP + "\"}";
+    } else if (conexionEnProgreso) {
+      unsigned long elapsed = millis() - inicioConexion;
+      int pct = constrain(elapsed * 100 / 15000, 5, 99);
+      if (elapsed > 15000) {
+        json = "{\"status\":\"failed\",\"message\":\"Tiempo de espera agotado (15s)\"}";
+        conexionEnProgreso = false;
+      } else {
+        String msg = (elapsed < 5000) ? "Conectando..." : "Esperando respuesta del router...";
+        json = "{\"status\":\"connecting\",\"progress\":" + String(pct) + ",\"message\":\"" + msg + "\"}";
+      }
+    } else {
+      json = "{\"status\":\"idle\"}";
+    }
+    request->send(200, "application/json", json);
+  });
+
+  server->on("/api/wifi/reset", HTTP_POST, [](AsyncWebServerRequest *request){
+    Serial.println("[CONFIG] Reset de credenciales solicitado.");
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+    borrarCredenciales();
+    delay(500);
+    ESP.restart();
+  });
+
+  server->on("/api/wifi/reboot", HTTP_POST, [](AsyncWebServerRequest *request){
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+    Serial.println("[CONFIG] Reiniciando ESP32 para aplicar configuración WiFi...");
+    delay(500);
+    ESP.restart();
+  });
+
+  server->on("/setup", HTTP_GET, [](AsyncWebServerRequest *request){
+    if (modoConfiguracion) {
+      request->send_P(200, "text/html", wifi_setup_html);
+    } else {
+      request->redirect("/");
+    }
+  });
+
+  server->onNotFound([](AsyncWebServerRequest *request){
+    if (modoConfiguracion && !conexionExitosa) {
+      request->send_P(200, "text/html", wifi_setup_html);
+    } else {
+      request->redirect("/login-page");
+    }
+  });
+
   server->on("/import-csv", HTTP_POST,
       [](AsyncWebServerRequest *request){
           if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; }
@@ -207,16 +427,30 @@ void iniciarServidorWeb() {
               return;
           }
 
-          File file = LittleFS.open("/datos.csv", "w");
-          if (!file) {
-              delete csvBody;
-              request->send(500, "text/plain", "Error al abrir el archivo");
-              return;
-          }
-
           size_t len = csvBody->length();
-          file.print(*csvBody);
-          file.close();
+          #ifdef SD_CS_PIN
+          if (sdDisponible) {
+              File file = SD.open("/datos.csv", FILE_WRITE);
+              if (!file) {
+                  delete csvBody;
+                  request->send(500, "text/plain", "Error al abrir el archivo en SD");
+                  return;
+              }
+              file.print(*csvBody);
+              file.close();
+          } else {
+          #endif
+              File file = LittleFS.open("/datos.csv", "w");
+              if (!file) {
+                  delete csvBody;
+                  request->send(500, "text/plain", "Error al abrir el archivo");
+                  return;
+              }
+              file.print(*csvBody);
+              file.close();
+          #ifdef SD_CS_PIN
+          }
+          #endif
           delete csvBody;
 
           Serial.printf("📥 [SISTEMA] CSV importado correctamente (%d bytes).\n", len);
@@ -232,13 +466,12 @@ void iniciarServidorWeb() {
       }
   );
 
-  // Vinculación del manejador de eventos WebSocket al objeto ws
-  ws->onEvent(onWsEvent); // Registra la función de callbacks para conexión, datos y desconexión
+  ws->onEvent(onWsEvent);
+  server->addHandler(ws);
+  server->begin();
 
-  // Registro del WebSocket como manejador del servidor HTTP
-  server->addHandler(ws); // Asocia el túnel WebSocket /ws al servidor principal
-
-  // Arranque definitivo del servidor HTTP — sin esta línea el servidor no escucha peticiones
-  server->begin(); // *** CRÍTICO: levanta el socket TCP en el puerto 80 ***
+  delay(200);
+  WiFi.scanNetworks(true);
+  Serial.println("[WiFi] Scan de redes iniciado en background.");
   Serial.println("[OK] Servidor web iniciado en puerto 80.");
 }

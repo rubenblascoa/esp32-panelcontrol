@@ -33,18 +33,18 @@
 // ============================================================================
 void modoLecturaNFC() {                   
   // Sondeo de bajo nivel en el bus SPI. Si no hay tarjeta presente o no se lee su número de serie, aborta de inmediato
-  if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) return;
+  if (!mfrc522->PICC_IsNewCardPresent() || !mfrc522->PICC_ReadCardSerial()) return;
 
   byte buffer[18];            // Búfer local temporal (MIFARE lee en bloques de 16 bytes + 2 bytes de CRC)
   byte size = sizeof(buffer); // Descriptor de tamaño obligatorio exigido por la biblioteca
   
   // Desafío criptográfico: Autenticamos el Sector 0 usando el comando Key A estándar y la clave almacenada en RAM
-  MFRC522::StatusCode status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 0, &key, &(mfrc522.uid));
+  MFRC522::StatusCode status = mfrc522->PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 0, &key, &(mfrc522->uid));
   
   // Evaluamos si el chip destino aceptó el protocolo de cifrado simétrico
   if (status == MFRC522::STATUS_OK) {     
     // Ejecutamos la lectura en crudo del bloque 0 (contiene UID, BCC y datos del fabricante)
-    status = mfrc522.MIFARE_Read(0, buffer, &size);
+    status = mfrc522->MIFARE_Read(0, buffer, &size);
     
     // Si la transferencia de datos a través del bus SPI fue exitosa
     if (status == MFRC522::STATUS_OK) {   
@@ -57,10 +57,10 @@ void modoLecturaNFC() {
   }
   
   // Secuencia mandatoria de apagado para liberar la tarjeta física y detener el cifrado del hardware
-  mfrc522.PICC_HaltA(); // Desactiva la bobina de la tarjeta
-  mfrc522.PCD_StopCrypto1(); // Libera las unidades criptográficas del lector
+  mfrc522->PICC_HaltA(); // Desactiva la bobina de la tarjeta
+  mfrc522->PCD_StopCrypto1(); // Libera las unidades criptográficas del lector
   
-  delay(2000); // Pausa anti-rebote electromagnético de 2 segundos para evitar lecturas fantasmas cíclicas
+  vTaskDelay(2000 / portTICK_PERIOD_MS); // Pausa anti-rebote electromagnético de 2 segundos para evitar lecturas fantasmas cíclicas
   modoNFC = 0; // Restablecemos el sub-estado a modo pasivo (espera)
   mostrarMenuNFC(); // Redibujamos de forma asíncrona el menú en la consola del usuario
 }
@@ -70,16 +70,16 @@ void modoLecturaNFC() {
 // ============================================================================
 void modoEscrituraNFC() {                 
   // Sondeo del bus SPI. Si no encuentra ninguna tarjeta preparada en el campo inclinable, retorna
-  if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) return;
+  if (!mfrc522->PICC_IsNewCardPresent() || !mfrc522->PICC_ReadCardSerial()) return;
   
   // Autenticación mandatoria del bloque de destino antes de intentar operaciones de alteración de celdas
-  MFRC522::StatusCode status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 0, &key, &(mfrc522.uid));
+  MFRC522::StatusCode status = mfrc522->PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 0, &key, &(mfrc522->uid));
   
   // Si la tarjeta destino valida la clave criptográfica de acceso
   if (status == MFRC522::STATUS_OK) {     
     // Intentamos la inyección del bloque de memoria mediante comando directo de escritura SPI
     // Nota crítica: Requiere que la tarjeta objetivo sea de tipo "Magic Card" uid-changeable (CUID/FUID)
-    status = mfrc522.MIFARE_Write(0, bloqueAEscribir, 16);
+    status = mfrc522->MIFARE_Write(0, bloqueAEscribir, 16);
     
     // Despacho de logs de diagnóstico según el resultado eléctrico devuelto por el hardware
     if (status == MFRC522::STATUS_OK) Terminal.println("\n[EXITO] Tarjeta Clonada.");
@@ -87,10 +87,10 @@ void modoEscrituraNFC() {
   }
   
   // Apagado físico del canal inductivo de radiofrecuencia
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
+  mfrc522->PICC_HaltA();
+  mfrc522->PCD_StopCrypto1();
   
-  delay(3000); // Espera extendida de 3 segundos para asegurar la fijación de la EEPROM física del tag
+  vTaskDelay(3000 / portTICK_PERIOD_MS); // Espera extendida de 3 segundos para asegurar la fijación de la EEPROM física del tag
   modoNFC = 0; // Regreso seguro a la máquina de estados en reposo
   mostrarMenuNFC(); // Refresca los terminales conectados
 }

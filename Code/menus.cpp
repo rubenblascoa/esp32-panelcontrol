@@ -26,53 +26,53 @@
  * @brief Implementación de las pantallas de texto y motores de enrutamiento de comandos CLI.
  */
 #include "menus.h"    // Vinculación formal con su cabecera de prototipos
-#include "terminal.h" // Habilita el acceso al objeto interactivo dual Terminal [cite: 37]
-#include "utils.h"    // Requerido para invocar la función obtenerUptime() de diagnóstico [cite: 531, 638]
+#include "terminal.h" // Habilita el acceso al objeto interactivo dual Terminal 
+#include "utils.h"    // Requerido para invocar la función obtenerUptime() de diagnóstico 
 #include "dht.h"      // Permite mostrar la lectura del termohigrómetro en el menú principal
 
 // ============================================================================
 // MENÚ DE BIENVENIDA Y REPORTE ESTADÍSTICO DE HARDWARE
 // ============================================================================
-void mostrarMenuPrincipal() { // [cite: 626]
+void mostrarMenuPrincipal() { // 
 
   // Activamos el modo de retención en el búfer web. Bloqueamos el flujo inmediato byte a byte
   // para concatenar todo el menú y lanzarlo en un único paquete TCP, protegiendo la red.
-  Terminal.iniciarBloque(); // 👈 Retenemos la transmisión automática hacia el WebSocket [cite: 26, 627]
+  Terminal.iniciarBloque(); // 👈 Retenemos la transmisión automática hacia el WebSocket 
   
   // Dibujamos las cabeceras visuales del software Zenith System
-  Terminal.println("\n=================================================="); // [cite: 627]
-  Terminal.println("                ESP32 BLASCO ARMENGOD             "); // [cite: 628]
-  Terminal.println("=================================================="); // [cite: 629]
-  Terminal.println("\n SELECCIONA UN PROGRAMA:"); // [cite: 629]
-  Terminal.println(" [1] ESTACION DE CLONACION NFC (V14)"); // [cite: 629]
-  Terminal.println(" [2] PROYECTO ULTRASONIDOS (V3)"); // [cite: 629]
+  Terminal.println("\n=================================================="); // 
+  Terminal.println("                ESP32 BLASCO ARMENGOD             "); // 
+  Terminal.println("=================================================="); // 
+  Terminal.println("\n SELECCIONA UN PROGRAMA:"); // 
+  Terminal.println(" [1] ESTACION DE CLONACION NFC (V14)"); // 
+  Terminal.println(" [2] PROYECTO ULTRASONIDOS (V3)"); // 
   Terminal.println(" [3] LEER TEMPERATURA Y HUMEDAD (DHT11)"); // Módulo termohigrómetro
-  Terminal.println("\n--------------------------------------------------"); // [cite: 629]
-  Terminal.println("\n TELEMETRIA DEL SISTEMA:"); // [cite: 630]
+  Terminal.println("\n--------------------------------------------------"); // 
+  Terminal.println("\n TELEMETRIA DEL SISTEMA:"); // 
   
   // LOGICA MATEMÁTICA DE DETERMINACIÓN DE MEMORIAS OPERATIVAS
   // Calculamos los bloques totales de RAM mapeando la PSRAM física disponible si existe, o el Heap interno
-  float ramTotal = (ESP.getPsramSize() > 0 ? ESP.getPsramSize() : ESP.getHeapSize()) / 1024.0; // [cite: 630]
+  float ramTotal = (ESP.getPsramSize() > 0 ? ESP.getPsramSize() : ESP.getHeapSize()) / 1024.0; // 
   // Determinamos los bloques libres residuales en los controladores dinámicos
-  float ramLibre = (ESP.getFreePsram() > 0 ? ESP.getFreePsram() : ESP.getFreeHeap()) / 1024.0; // [cite: 631]
-  float ramUsada = ramTotal - ramLibre; // Obtenemos el volumen real neto de RAM en uso por los núcleos [cite: 631]
+  float ramLibre = (ESP.getFreePsram() > 0 ? ESP.getFreePsram() : ESP.getFreeHeap()) / 1024.0; // 
+  float ramUsada = ramTotal - ramLibre; // Obtenemos el volumen real neto de RAM en uso por los núcleos 
   
   // Consultamos el tamaño total asignado y el consumo físico actual en el chip de almacenamiento Flash
-  float flashTotal = LittleFS.totalBytes() / 1024.0; // [cite: 632]
-  float flashUsada = LittleFS.usedBytes() / 1024.0;  // [cite: 632]
+  float flashTotal = LittleFS.totalBytes() / 1024.0; // 
+  float flashUsada = LittleFS.usedBytes() / 1024.0;  // 
   
   // IMPRESIÓN DETALLADA DEL ESTADO DEL ALMACENAMIENTO EN DISCO
-  Terminal.print(" - Almacenamiento: "); // [cite: 633]
+  Terminal.print(" - Almacenamiento: "); // 
   if(flashTotal > 0) { // Evaluamos si el sistema de archivos local está correctamente montado
       // Imprimimos los Kilobytes ocupados frente a la capacidad de la partición
-      Terminal.print(flashUsada, 0); Terminal.print(" KB / "); Terminal.print(flashTotal, 0); Terminal.println(" KB"); // [cite: 634]
+      Terminal.print(flashUsada, 0); Terminal.print(" KB / "); Terminal.print(flashTotal, 0); Terminal.println(" KB"); // 
   } else {
-      Terminal.println("0 KB / 0 KB (No montado)"); // Mensaje protector en caso de fallo de montaje [cite: 635]
+      Terminal.println("0 KB / 0 KB (No montado)"); // Mensaje protector en caso de fallo de montaje 
   }
   
   // TRANSMISIÓN DE LOGS DE RENDIMIENTO CORE EN TIEMPO REAL
-  Terminal.print(" - RAM Usada: "); Terminal.print(ramUsada, 0); Terminal.print(" KB / "); Terminal.print(ramTotal, 0); Terminal.println(" KB"); // [cite: 636]
-  Terminal.print(" - Temp Core: "); Terminal.print(temperatureRead(), 1); Terminal.println(" C"); // Lectura de silicio interna [cite: 637]
+  Terminal.print(" - RAM Usada: "); Terminal.print(ramUsada, 0); Terminal.print(" KB / "); Terminal.print(ramTotal, 0); Terminal.println(" KB"); // 
+  Terminal.print(" - Temp Core: "); Terminal.print(temperatureRead(), 1); Terminal.println(" C"); // Lectura de silicio interna 
   // Lectura del termohigrómetro externo DHT11
   if (temperaturaActual > -127.0) {
     Terminal.print(" - Temp DHT11: "); Terminal.print(temperaturaActual, 1); Terminal.println(" C");
@@ -80,35 +80,35 @@ void mostrarMenuPrincipal() { // [cite: 626]
   } else {
     Terminal.println(" - DHT11: Sin lectura valida");
   }
-  Terminal.print(" - Vel. CPU : "); Terminal.print(ESP.getCpuFreqMHz()); Terminal.println(" MHz"); // Frecuencia del oscilador de reloj [cite: 637]
+  Terminal.print(" - Vel. CPU : "); Terminal.print(ESP.getCpuFreqMHz()); Terminal.println(" MHz"); // Frecuencia del oscilador de reloj 
   
   // Mapeamos el contador de tiempo de actividad ininterrumpida formateado desde utils
-  Terminal.print(" - Tiempo Activo : "); Terminal.println(obtenerUptime()); // [cite: 638]
-  Terminal.print(" - Direccion IP : "); Terminal.println(WiFi.localIP()); // Muestra la IP asignada por el DHCP local [cite: 639]
+  Terminal.print(" - Tiempo Activo : "); Terminal.println(obtenerUptime()); // 
+  Terminal.print(" - Direccion IP : "); Terminal.println(WiFi.localIP()); // Muestra la IP asignada por el DHCP local 
 
-  Terminal.println("\n=================================================="); // [cite: 639]
-  Terminal.println("               Ruben Blasco Armengod              "); // [cite: 639]
-  Terminal.println("=================================================="); // [cite: 640]
+  Terminal.println("\n=================================================="); // 
+  Terminal.println("               Ruben Blasco Armengod              "); // 
+  Terminal.println("=================================================="); // 
 
   // Liberamos las compuertas lógicas y disparamos la ráfaga masiva de caracteres hacia la web
-  Terminal.enviarBloque(); // [cite: 640]
+  Terminal.enviarBloque(); // 
   
-  tiempoUltimoMenuPrincipal = millis(); // Reseteamos el cronómetro de inactividad para evitar repintados automáticos prematuros [cite: 640]
+  tiempoUltimoMenuPrincipal = millis(); // Reseteamos el cronómetro de inactividad para evitar repintados automáticos prematuros 
 }
 
 // ============================================================================
 // PARSER Y ENRUTADOR DEL MENÚ PRINCIPAL
 // ============================================================================
-void procesarMenuPrincipal(String entrada) { // [cite: 640]
+void procesarMenuPrincipal(String entrada) { // 
   if (entrada == "1") { // Opción 1: Transición de la FSM hacia el entorno de clonación por proximidad
-      programaActivo = 1; // Fijamos el puntero ejecutor en modo NFC [cite: 40, 641]
-      modoNFC = 0;        // Inicializamos el sub-estado del lector RFID en modo reposo [cite: 41, 641]
-      mostrarMenuNFC();   // Despachamos de forma inmediata la interfaz del transceptor [cite: 641]
+      programaActivo = 1; // Fijamos el puntero ejecutor en modo NFC 
+      modoNFC = 0;        // Inicializamos el sub-estado del lector RFID en modo reposo 
+      mostrarMenuNFC();   // Despachamos de forma inmediata la interfaz del transceptor 
   } 
   else if (entrada == "2") { // Opción 2: Transición de la FSM hacia el entorno sónico
-      programaActivo = 2;       // Fijamos el puntero ejecutor en modo Ultrasonidos [cite: 40, 641]
-      midiendoDistancia = false; // El radar ultrasónico comienza apagado por defecto hasta orden expresa [cite: 43, 642]
-      mostrarMenuUltrasonidos(); // Despachamos el menú del sensor de distancia [cite: 642]
+      programaActivo = 2;       // Fijamos el puntero ejecutor en modo Ultrasonidos 
+      midiendoDistancia = false; // El radar ultrasónico comienza apagado por defecto hasta orden expresa 
+      mostrarMenuUltrasonidos(); // Despachamos el menú del sensor de distancia 
   }
   else if (entrada == "3") { // Opción 3: Menú del termohigrómetro DHT11
       programaActivo = 3; // Fijamos el puntero ejecutor en modo DHT11
@@ -119,78 +119,78 @@ void procesarMenuPrincipal(String entrada) { // [cite: 640]
 // ============================================================================
 // INTERFAZ DE CONTROL PARA LA ESTACIÓN DE TRANSMISIÓN RFID
 // ============================================================================
-void mostrarMenuNFC() { // [cite: 642]
+void mostrarMenuNFC() { // 
 
-  Terminal.iniciarBloque(); // 👈 Abrimos retención para unificar la pantalla NFC [cite: 642]
+  Terminal.iniciarBloque(); // 👈 Abrimos retención para unificar la pantalla NFC 
 
-  Terminal.println("\n**************************************************"); // [cite: 642]
-  Terminal.println("          ESTACION DE CLONACION PRO V14           "); // [cite: 643]
-  Terminal.println("**************************************************"); // [cite: 644]
-  Terminal.println(" [1] LEER Y GUARDAR: Radiografia completa + Memoria"); // [cite: 644]
-  Terminal.println(" [2] CLONAR: Elige que datos quieres copiar."); // [cite: 644]
-  Terminal.println(" [N] VOLVER AL MENU NFC (A esta pantalla)"); // [cite: 645]
-  Terminal.println(" [M] SALIR AL MENU PRINCIPAL (ESP32 Blasco)"); // [cite: 645]
-  Terminal.println("--------------------------------------------------"); // [cite: 645]
+  Terminal.println("\n**************************************************"); // 
+  Terminal.println("          ESTACION DE CLONACION PRO V14           "); // 
+  Terminal.println("**************************************************"); // 
+  Terminal.println(" [1] LEER Y GUARDAR: Radiografia completa + Memoria"); // 
+  Terminal.println(" [2] CLONAR: Elige que datos quieres copiar."); // 
+  Terminal.println(" [N] VOLVER AL MENU NFC (A esta pantalla)"); // 
+  Terminal.println(" [M] SALIR AL MENU PRINCIPAL (ESP32 Blasco)"); // 
+  Terminal.println("--------------------------------------------------"); // 
   
   // GESTIÓN VISUAL DEL ESTADO DE LOS REGISTROS NFC EN RAM
   if (memoriaLlena) { 
-    Terminal.println(" >> MEMORIA: Tarjeta guardada en RAM [OK]"); // Los buffers globales contienen datos íntegros clonables [cite: 646]
+    Terminal.println(" >> MEMORIA: Tarjeta guardada en RAM [OK]"); // Los buffers globales contienen datos íntegros clonables 
   } else { 
-    Terminal.println(" >> MEMORIA: Vacia (Usa la opcion 1)"); // El búfer dinámico se encuentra en estado huérfano [cite: 647]
+    Terminal.println(" >> MEMORIA: Vacia (Usa la opcion 1)"); // El búfer dinámico se encuentra en estado huérfano 
   }
   
-  Terminal.println("**************************************************"); // [cite: 647]
-  Terminal.enviarBloque(); // Emitimos el bloque completo hacia los clientes conectados [cite: 648]
+  Terminal.println("**************************************************"); // 
+  Terminal.enviarBloque(); // Emitimos el bloque completo hacia los clientes conectados 
 
-  tiempoUltimoMenuNFC = millis(); // Capturamos la marca de tiempo para el control de inactividad de la interfaz [cite: 648]
+  tiempoUltimoMenuNFC = millis(); // Capturamos la marca de tiempo para el control de inactividad de la interfaz 
 }
 
 // ============================================================================
 // PARSER Y ENRUTADOR DE SUB-ESTADOS DEL ENTORNO NFC
 // ============================================================================
-void procesarEntradaNFC(String entrada) { // [cite: 648]
-  entrada.toUpperCase(); // Convertimos drásticamente a mayúsculas para sanitizar entradas accidentales [cite: 648]
+void procesarEntradaNFC(String entrada) { // 
+  entrada.toUpperCase(); // Convertimos drásticamente a mayúsculas para sanitizar entradas accidentales 
   
   if (entrada == "M") { // Comando de aborto: Regreso seguro a la raíz del firmware
-      programaActivo = 0; // Conmutamos la máquina de estados principal a reposo [cite: 40, 648]
-      mostrarMenuPrincipal(); // Dibuja la pantalla de bienvenida con su telemetría [cite: 648]
-      return; // Interrumpe la función de forma inmediata [cite: 649]
+      programaActivo = 0; // Conmutamos la máquina de estados principal a reposo 
+      mostrarMenuPrincipal(); // Dibuja la pantalla de bienvenida con su telemetría 
+      return; // Interrumpe la función de forma inmediata 
   } 
   
   if (modoNFC == 0 && entrada == "1") { // Solicitud de escaneo de credenciales físicas original
-      modoNFC = 1; // Cambiamos el sub-estado a modo escucha activa (interrogación en bus SPI) [cite: 41, 649]
-      Terminal.println("\n>>> ACERCA TARJETA ORIGINAL..."); // Notificación instructiva por terminal [cite: 649]
+      modoNFC = 1; // Cambiamos el sub-estado a modo escucha activa (interrogación en bus SPI) 
+      Terminal.println("\n>>> ACERCA TARJETA ORIGINAL..."); // Notificación instructiva por terminal 
   } 
   else if (modoNFC == 0 && entrada == "2") { // Solicitud de volcado e inyección criptográfica
       if(!memoriaLlena) { // Validación estricta contra errores de buffer vacío
-          Terminal.println("[!] ERROR: Memoria vacia"); // Bloqueo preventivo para no corromper tags [cite: 650]
-          return; // Aborta la operación [cite: 651]
+          Terminal.println("[!] ERROR: Memoria vacia"); // Bloqueo preventivo para no corromper tags 
+          return; // Aborta la operación 
       } 
       // Asignación física del puntero dinámico de escritura hacia la dirección de la matriz leída
-      bloqueAEscribir = bloqueEscaneado; // [cite: 39, 651]
-      modoNFC = 4; // Cambiamos el sub-estado a modo inyección masiva (escritura en bus SPI) [cite: 41, 651]
-      Terminal.println("\n>>> ACERCA TARJETA DESTINO..."); // Instructivo visual para aproximar el tag virgen [cite: 652]
+      bloqueAEscribir = bloqueEscaneado; // 
+      modoNFC = 4; // Cambiamos el sub-estado a modo inyección masiva (escritura en bus SPI) 
+      Terminal.println("\n>>> ACERCA TARJETA DESTINO..."); // Instructivo visual para aproximar el tag virgen 
   }
 }
 
 // ============================================================================
 // INTERFAZ DE CONTROL PARA EL SENSOR ULTRASONIDOS HC-SR04
 // ============================================================================
-void mostrarMenuUltrasonidos() { // [cite: 663]
+void mostrarMenuUltrasonidos() { // 
 
-  Terminal.iniciarBloque(); // 👈 Retenemos para unificar el bloque sónico [cite: 663]
+  Terminal.iniciarBloque(); // 👈 Retenemos para unificar el bloque sónico 
 
-  Terminal.println("\n=================================================="); // [cite: 663]
-  Terminal.println("             PROYECTO 2: ULTRASONIDOS             "); // [cite: 663]
-  Terminal.println("=================================================="); // [cite: 664]
-  Terminal.println(" [1] INICIAR radar de distancia en tiempo real"); // [cite: 664]
-  Terminal.println(" [2] DETENER radar de distancia"); // [cite: 664]
-  Terminal.println(" [U] VOLVER AL MENU ULTRASONIDOS (A esta pantalla)"); // [cite: 665]
-  Terminal.println(" [M] VOLVER AL MENU PRINCIPAL (ESP32 Blasco)"); // [cite: 665]
-  Terminal.println("=================================================="); // [cite: 665]
+  Terminal.println("\n=================================================="); // 
+  Terminal.println("             PROYECTO 2: ULTRASONIDOS             "); // 
+  Terminal.println("=================================================="); // 
+  Terminal.println(" [1] INICIAR radar de distancia en tiempo real"); // 
+  Terminal.println(" [2] DETENER radar de distancia"); // 
+  Terminal.println(" [U] VOLVER AL MENU ULTRASONIDOS (A esta pantalla)"); // 
+  Terminal.println(" [M] VOLVER AL MENU PRINCIPAL (ESP32 Blasco)"); // 
+  Terminal.println("=================================================="); // 
 
-  Terminal.enviarBloque(); // Despachamos la pantalla acústica [cite: 665]
-  tiempoUltimoMenuPrincipal = millis(); // Capturamos marca de tiempo de sincronización [cite: 666]
+  Terminal.enviarBloque(); // Despachamos la pantalla acústica 
+  tiempoUltimoMenuPrincipal = millis(); // Capturamos marca de tiempo de sincronización 
 }
 
 // ============================================================================

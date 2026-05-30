@@ -26,11 +26,12 @@
  */
 #include "utils.h" // Vinculación formal con su archivo de cabecera de definición
 #include "dht.h"   // Acceso a temperaturaActual y humedadActual del DHT11
+#include "sd_card.h" // Acceso a funciones de tarjeta SD
 
 // ============================================================================
 // CÁLCULO REAL DE USO DE CPU POR NÚCLEO
 // ============================================================================
-uint32_t calcularUsoCPU(int coreID) { // [cite: 524]
+uint32_t calcularUsoCPU(int coreID) { // 
   // Mide el porcentaje real de CPU usado en cada núcleo comparando el tiempo
   // de trabajo efectivo frente al tiempo total del ciclo de la tarea principal.
   // Los valores son actualizados por tareas.cpp en cada iteración del bucle.
@@ -64,13 +65,13 @@ uint32_t calcularUsoCPU(int coreID) { // [cite: 524]
 // ============================================================================
 // FORMATO DE TIEMPOS DE ACTIVIDAD (UPTIME)
 // ============================================================================
-String obtenerUptime() { // [cite: 531]
-  uint32_t sec = millis() / 1000; // Capturamos los segundos reales transcurridos convirtiendo milisegundos [cite: 531]
+String obtenerUptime() { // 
+  uint32_t sec = millis() / 1000; // Capturamos los segundos reales transcurridos convirtiendo milisegundos 
   char buff[20];                  // Búfer local estático de caracteres para formateo de texto
   
   // Segmentamos matemáticamente las horas totales, los minutos residuales y los segundos sobrantes
-  sprintf(buff, "%02d:%02d:%02d", (sec / 3600), (sec % 3600) / 60, sec % 60); // [cite: 532]
-  return String(buff);            // Retornamos el string formateado como un objeto nativo [cite: 532]
+  sprintf(buff, "%02d:%02d:%02d", (sec / 3600), (sec % 3600) / 60, sec % 60); // 
+  return String(buff);            // Retornamos el string formateado como un objeto nativo 
 }
 
 // ============================================================================
@@ -80,114 +81,219 @@ String obtenerFechaHora() {
   struct tm timeinfo; // Instanciación de la estructura estándar de tiempo de C de tipo tm
   
   // Consultamos el reloj de hardware interno; si el servidor NTP aún no ha sincronizado, abortamos
-  if(!getLocalTime(&timeinfo)){ // [cite: 533]
-    return "00/00/00 00:00"; // Fallback seguro para evitar escrituras de fechas corruptas [cite: 533]
+  if(!getLocalTime(&timeinfo)){ // 
+    return "00/00/00 00:00"; // Fallback seguro para evitar escrituras de fechas corruptas 
   }
   char buff[25]; // Búfer de salida para albergar la cadena string armada
   
   // Procesamos la estructura inyectando máscaras: %d (día), %m (mes), %Y (año), %H (hora), %M (minuto)
-  strftime(buff, sizeof(buff), "%d/%m/%Y %H:%M", &timeinfo); // [cite: 534]
-  return String(buff); // Retornamos la estampa de tiempo legible [cite: 534]
+  strftime(buff, sizeof(buff), "%d/%m/%Y %H:%M", &timeinfo); // 
+  return String(buff); // Retornamos la estampa de tiempo legible 
 }
 
 // ============================================================================
-// ESCRITURA DE ENTRADAS EN LA BASE DE DATOS LOCAL CSV (LittleFS)
+// ESCRITURA DE ENTRADAS EN LA BASE DE DATOS LOCAL CSV (SD / LittleFS)
 // ============================================================================
-void guardarEnHistorial() { // [cite: 552]
-    // Abrimos el descriptor del archivo en la partición Flash utilizando la bandera "a" (Append / Adjuntar)
-    File file = LittleFS.open("/datos.csv", "a"); // 
-    if (!file) return; // Si hay un fallo físico en las celdas de almacenamiento abortamos para evitar pánicos [cite: 552]
-
+void guardarEnHistorial() { // 
     // Muestreamos la telemetría térmica e interna de los procesos multinúcleo
-    int cargaC0 = calcularUsoCPU(0); // [cite: 553]
-    int cargaC1 = calcularUsoCPU(1); // [cite: 553]
-    int cargaTotal = (cargaC0 + cargaC1) / 2; // [cite: 553]
+    int cargaC0 = calcularUsoCPU(0); // 
+    int cargaC1 = calcularUsoCPU(1); // 
+    int cargaTotal = (cargaC0 + cargaC1) / 2; // 
 
-    String fechaHora = obtenerFechaHora(); // Capturamos la marca de tiempo sincronizada [cite: 553]
-    float temp = temperatureRead();        // Leemos el sensor térmico embebido en el die del microprocesador [cite: 554]
+    String fechaHora = obtenerFechaHora(); // Capturamos la marca de tiempo sincronizada 
+    float temp = temperatureRead();        // Leemos el sensor térmico embebido en el die del microprocesador 
     
     // Determinación precisa del tamaño total de memoria operativa (Diferenciando PSRAM externa de Heap interno)
-    uint32_t ramTotal = ESP.getPsramSize() > 0 ? ESP.getPsramSize() : ESP.getHeapSize(); // [cite: 555]
+    uint32_t ramTotal = ESP.getPsramSize() > 0 ? ESP.getPsramSize() : ESP.getHeapSize(); // 
     
     // Ecuación porcentual para calcular la tasa de ocupación de la memoria RAM dinámica
     float ramUsada = (ESP.getFreePsram() > 0) ?
-        100.0 - (ESP.getFreePsram() * 100.0 / ramTotal) : 100.0 - (ESP.getFreeHeap() * 100.0 / ESP.getHeapSize()); // [cite: 555, 556]
+        100.0 - (ESP.getFreePsram() * 100.0 / ramTotal) : 100.0 - (ESP.getFreeHeap() * 100.0 / ESP.getHeapSize()); // 
     
     // Evaluación del volumen total asignado y ocupado dentro del espacio LittleFS
-    float flashTotal = LittleFS.totalBytes(); // [cite: 556]
-    float flashUsado = LittleFS.usedBytes();  // [cite: 557]
+    float flashTotal = LittleFS.totalBytes(); // 
+    float flashUsado = LittleFS.usedBytes();  // 
     
     // Redondeo matemático a dos decimales para el porcentaje ocupado de espacio en disco
     float flash = (flashTotal > 0) ?
-        round(((flashUsado * 100.0) / flashTotal) * 100.0) / 100.0 : 0.0; // [cite: 557, 558]
+        round(((flashUsado * 100.0) / flashTotal) * 100.0) / 100.0 : 0.0; // 
         
     // Transformación matemática de la potencia RSSI (dBm) del receptor de radio WiFi a una escala lineal de 0 a 100%
-    int wifi = min(max(2 * (WiFi.RSSI() + 100), 0), 100); // [cite: 559]
+    int wifi = min(max(2 * (WiFi.RSSI() + 100), 0), 100); // 
 
-    // Inyección física en texto estructurado dentro del bloque de almacenamiento:
-    // Formato: Fecha/Hora, TempCore, CPU_Total, Core0, Core1, RAM%, Flash%, WiFi%, TempDHT, HumDHT
-    file.printf("%s,%.1f,%d,%d,%d,%.1f,%.1f,%d,%.1f,%.1f\n",
+    // Construcción de la línea CSV completa en memoria
+    char linea[256];
+    snprintf(linea, sizeof(linea), "%s,%.1f,%d,%d,%d,%.1f,%.1f,%d,%.1f,%.1f\n",
         fechaHora.c_str(), temp, cargaTotal, cargaC0, cargaC1,
-        ramUsada, flash, wifi, temperaturaActual, humedadActual); // [cite: 554, 559]   
-    file.close(); // Cerramos el puntero del archivo forzando el volcado físico a los transistores de la Flash [cite: 560]
-    Serial.println("💾 [SISTEMA] Registro guardado en Flash (2 horas)."); // Notificación externa por hardware [cite: 560]
+        ramUsada, flash, wifi, temperaturaActual, humedadActual);
+
+    // Volcado físico: SD si está disponible, sino LittleFS
+    if (sdDisponible) {
+        guardarLineaSD(String(linea));
+    } else {
+        File file = LittleFS.open("/datos.csv", "a");
+        if (!file) return;
+        file.print(linea);
+        file.close();
+    }
+    Serial.println("💾 [SISTEMA] Registro guardado (2 horas).");
 }
+
+// ============================================================================
+// FUNCIONES DE PERSISTENCIA NVS (Credenciales WiFi)
+// ============================================================================
+bool guardarCredenciales(const char* ssid, const char* pass) {
+    Preferences prefs;
+    prefs.begin("zenithmc", false);
+    prefs.putString("ssid", ssid);
+    prefs.putString("password", pass);
+    prefs.end();
+    Serial.printf("[NVS] Credenciales guardadas: SSID=%s\n", ssid);
+    return true;
+}
+
+bool cargarCredenciales(String& ssid, String& pass) {
+    Preferences prefs;
+    prefs.begin("zenithmc", true);
+    ssid = prefs.getString("ssid", "");
+    pass = prefs.getString("password", "");
+    prefs.end();
+    bool ok = (ssid.length() > 0 && pass.length() > 0);
+    if (ok) Serial.printf("[NVS] Credenciales cargadas: SSID=%s\n", ssid.c_str());
+    return ok;
+}
+
+bool borrarCredenciales() {
+    Preferences prefs;
+    prefs.begin("zenithmc", false);
+    prefs.clear();
+    prefs.end();
+    Serial.println("[NVS] Credenciales borradas.");
+    return true;
+}
+
+bool guardarSetupCompletado() {
+    Preferences prefs;
+    prefs.begin("zenithmc", false);
+    prefs.putBool("setupDone", true);
+    prefs.end();
+    Serial.println("[NVS] Setup marcado como completado.");
+    return true;
+}
+
+bool setupCompletado() {
+    Preferences prefs;
+    prefs.begin("zenithmc", true);
+    bool done = prefs.getBool("setupDone", false);
+    prefs.end();
+    return done;
+}
+
+bool guardarConfigHardware(int nfcRst, int nfcSs, int trigPin, int echoPin, int dhtPin) {
+    Preferences prefs;
+    prefs.begin("hwconfig", false);
+    prefs.putInt("nfcRst", nfcRst);
+    prefs.putInt("nfcSs", nfcSs);
+    prefs.putInt("trigPin", trigPin);
+    prefs.putInt("echoPin", echoPin);
+    prefs.putInt("dhtPin", dhtPin);
+    prefs.end();
+    Serial.println("[NVS] Configuracion de hardware guardada.");
+    return true;
+}
+
+bool cargarConfigHardware() {
+    Preferences prefs;
+    prefs.begin("hwconfig", true);
+    if (!prefs.isKey("nfcRst")) { prefs.end(); return false; }
+    RST_PIN  = prefs.getInt("nfcRst", RST_PIN);
+    SS_PIN   = prefs.getInt("nfcSs", SS_PIN);
+    TRIG_PIN = prefs.getInt("trigPin", TRIG_PIN);
+    ECHO_PIN = prefs.getInt("echoPin", ECHO_PIN);
+    DHT_PIN  = prefs.getInt("dhtPin", DHT_PIN);
+    prefs.end();
+    Serial.printf("[NVS] Config hardware cargada: RST=%d CS=%d TRIG=%d ECHO=%d DHT=%d\n",
+        RST_PIN, SS_PIN, TRIG_PIN, ECHO_PIN, DHT_PIN);
+    return true;
+}
+
+bool guardarCredencialesWeb(String user, String pass) {
+    Preferences prefs;
+    prefs.begin("webcred", false);
+    prefs.putString("user", user);
+    prefs.putString("pass", pass);
+    prefs.end();
+    Serial.println("[NVS] Credenciales web guardadas.");
+    return true;
+}
+
+bool cargarCredencialesWeb() {
+    Preferences prefs;
+    prefs.begin("webcred", true);
+    if (!prefs.isKey("user")) { prefs.end(); return false; }
+    webUser = prefs.getString("user", "admin");
+    webPass = prefs.getString("pass", "blasco");
+    prefs.end();
+    Serial.println("[NVS] Credenciales web cargadas.");
+    return true;
+}
+
 
 // ============================================================================
 // PAGINACIÓN Y RENDERIZADO GRÁFICO EN PANEL LCD I2C
 // ============================================================================
-void actualizarLCD() { // [cite: 560]
+void actualizarLCD() { // 
   // Solicitamos la llave del semáforo Mutex. Esto garantiza de forma absoluta que si una tarea en el Core 1
   // intenta usar el bus I2C, esperará a que el LCD termine su transmisión, evitando colisiones de hardware.
-  if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100))) { // [cite: 48, 560]
+  if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100))) { // 
 
     // Inicialización interna de variables de estado para el cálculo dinámico en pantalla
-    uint32_t ramTotal = ESP.getPsramSize() > 0 ? ESP.getPsramSize() : ESP.getHeapSize(); // [cite: 560, 561]
+    uint32_t ramTotal = ESP.getPsramSize() > 0 ? ESP.getPsramSize() : ESP.getHeapSize(); // 
     int ramUsada = (ESP.getFreePsram() > 0) ?
-        100 - (ESP.getFreePsram() * 100 / ramTotal) : 100 - (ESP.getFreeHeap() * 100 / ESP.getHeapSize()); // [cite: 561, 562]
+        100 - (ESP.getFreePsram() * 100 / ramTotal) : 100 - (ESP.getFreeHeap() * 100 / ESP.getHeapSize()); // 
         
-    int wifiQ    = min(max(2 * (WiFi.RSSI() + 100), 0), 100); // [cite: 563]
-    int cpu      = (calcularUsoCPU(0) + calcularUsoCPU(1)) / 2; // [cite: 564]
-    int temp     = (int)temperatureRead(); // [cite: 565]
+    int wifiQ    = min(max(2 * (WiFi.RSSI() + 100), 0), 100); // 
+    int cpu      = (calcularUsoCPU(0) + calcularUsoCPU(1)) / 2; // 
+    int temp     = (int)temperatureRead(); // 
     
-    float flashTotal = LittleFS.totalBytes(); // [cite: 565]
-    float flashUsado = LittleFS.usedBytes();  // [cite: 565]
-    float flash = (flashTotal > 0) ? (flashUsado * 100.0 / flashTotal) : 0.0; // [cite: 566]
+    float flashTotal = LittleFS.totalBytes(); // 
+    float flashUsado = LittleFS.usedBytes();  // 
+    float flash = (flashTotal > 0) ? (flashUsado * 100.0 / flashTotal) : 0.0; // 
     
-    int c0       = calcularUsoCPU(0); // [cite: 567]
-    int c1       = calcularUsoCPU(1); // [cite: 567]
-    String uptime = obtenerUptime();   // [cite: 568]
+    int c0       = calcularUsoCPU(0); // 
+    int c1       = calcularUsoCPU(1); // 
+    String uptime = obtenerUptime();   // 
 
     static int pantalla = 0; // Puntero estático indexador de página que retiene su valor entre llamadas
 
     // Expresión Lambda anidada optimizada para generar dinámicamente las barras de progreso gráficas en texto plano
     auto barra = [](int valor, int ancho) -> String {
-      int bloques = map(constrain(valor, 0, 100), 0, 100, 0, ancho); // Mapeo lineal del porcentaje al ancho en caracteres [cite: 568]
-      String b = "|"; // Carácter de apertura de contenedor [cite: 569]
-      for (int i = 0; i < ancho; i++) b += (i < bloques) ? "=" : " "; // Inyección de bloques activos o vacíos [cite: 569, 570]
-      b += "|"; // Carácter de cierre de contenedor [cite: 570]
-      return b; // Devuelve el contenedor gráfico [cite: 570]
+      int bloques = map(constrain(valor, 0, 100), 0, 100, 0, ancho); // Mapeo lineal del porcentaje al ancho en caracteres 
+      String b = "|"; // Carácter de apertura de contenedor 
+      for (int i = 0; i < ancho; i++) b += (i < bloques) ? "=" : " "; // Inyección de bloques activos o vacíos 
+      b += "|"; // Carácter de cierre de contenedor 
+      return b; // Devuelve el contenedor gráfico 
     };
 
     char fila0[17], fila1[17]; // Matrices estáticas alineadas al ancho físico de tu pantalla LCD (16 caracteres + fin nulo)
     
     // Máquina de estados selectiva para la rotación cíclica de las 4 pantallas de diagnóstico
-    switch (pantalla) { // [cite: 571]
+    switch (pantalla) { // 
       case 0: // Página A: Temperatura térmica y Uso promedio de procesamiento
-        snprintf(fila0, sizeof(fila0), "TEMP%s%3dC", barra(temp, 5).c_str(), temp); // [cite: 571]
-        snprintf(fila1, sizeof(fila1), "CPU %s%3d%%", barra(cpu, 5).c_str(), cpu); // [cite: 572]
+        snprintf(fila0, sizeof(fila0), "TEMP%s%3dC", barra(temp, 5).c_str(), temp); // 
+        snprintf(fila1, sizeof(fila1), "CPU %s%3d%%", barra(cpu, 5).c_str(), cpu); // 
         break;
       case 1: // Página B: Carga segregada del Núcleo 0 y Núcleo 1
-        snprintf(fila0, sizeof(fila0), "C0  %s%3d%%", barra(c0, 5).c_str(), c0); // [cite: 572]
-        snprintf(fila1, sizeof(fila1), "C1  %s%3d%%", barra(c1, 5).c_str(), c1); // [cite: 573]
+        snprintf(fila0, sizeof(fila0), "C0  %s%3d%%", barra(c0, 5).c_str(), c0); // 
+        snprintf(fila1, sizeof(fila1), "C1  %s%3d%%", barra(c1, 5).c_str(), c1); // 
         break;
       case 2: // Página C: Tasa operativa de RAM y Ocupación del espacio de archivos Flash
-        snprintf(fila0, sizeof(fila0), "RAM %s%3d%%", barra(ramUsada, 5).c_str(), ramUsada); // [cite: 573]
-        snprintf(fila1, sizeof(fila1), "FLSH%s%.1f%%", barra(flash, 5).c_str(), (float)flash); // [cite: 574]
+        snprintf(fila0, sizeof(fila0), "RAM %s%3d%%", barra(ramUsada, 5).c_str(), ramUsada); // 
+        snprintf(fila1, sizeof(fila1), "FLSH%s%.1f%%", barra(flash, 5).c_str(), (float)flash); // 
         break;
       case 3: // Página D: Porcentaje de potencia WiFi y Tiempo de actividad acumulado
-        snprintf(fila0, sizeof(fila0), "WIFI%s%3d%%", barra(wifiQ, 5).c_str(), wifiQ); // [cite: 575]
-        snprintf(fila1, sizeof(fila1), "UP   %.8s   ", uptime.c_str()); // Recorte estricto a los primeros 8 caracteres del Uptime [cite: 575]
+        snprintf(fila0, sizeof(fila0), "WIFI%s%3d%%", barra(wifiQ, 5).c_str(), wifiQ); // 
+        snprintf(fila1, sizeof(fila1), "UP   %.8s   ", uptime.c_str()); // Recorte estricto a los primeros 8 caracteres del Uptime 
         break;
       case 4: { // Página E: Temperatura y humedad del sensor externo DHT11
         int dhtT = (temperaturaActual > -127.0) ? (int)round(temperaturaActual) : -1;
@@ -204,13 +310,13 @@ void actualizarLCD() { // [cite: 560]
     }
 
     // Volcado de datos directo al hardware controlador LCD a través del bus físico
-    lcd.setCursor(0, 0); // Posicionamos el cursor en el inicio de la línea superior [cite: 575]
-    lcd.print(fila0);    // Transmitimos la cadena de texto de la primera fila [cite: 575]
-    lcd.setCursor(0, 1); // Posicionamos el cursor en el inicio de la línea inferior [cite: 575]
-    lcd.print(fila1);    // Transmitimos la cadena de texto de la segunda fila [cite: 576]
+    lcd.setCursor(0, 0); // Posicionamos el cursor en el inicio de la línea superior 
+    lcd.print(fila0);    // Transmitimos la cadena de texto de la primera fila 
+    lcd.setCursor(0, 1); // Posicionamos el cursor en el inicio de la línea inferior 
+    lcd.print(fila1);    // Transmitimos la cadena de texto de la segunda fila 
 
-    pantalla = (pantalla + 1) % 5; // Incrementamos cíclicamente el indexador moviéndolo entre el rango 0-4 [cite: 576]
+    pantalla = (pantalla + 1) % 5; // Incrementamos cíclicamente el indexador moviéndolo entre el rango 0-4 
 
-    xSemaphoreGive(i2cMutex); // Liberación mandatoria del semáforo Mutex para habilitar el uso del bus a otros hilos [cite: 576]
+    xSemaphoreGive(i2cMutex); // Liberación mandatoria del semáforo Mutex para habilitar el uso del bus a otros hilos 
   }
 }

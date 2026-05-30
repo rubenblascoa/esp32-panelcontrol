@@ -11,7 +11,7 @@
 // 
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -21,19 +21,25 @@
 // SOFTWARE.
 
 /**
- * @file web_pages.h
- * @brief Declaración de las páginas HTML incrustadas en memoria Flash (PROGMEM).
+ * @file sd_card.h
+ * @brief Declaracion de funciones para el modulo de tarjeta SD.
  */
-#pragma once // Evita colisiones por inclusiones múltiples en tiempo de compilación
+#pragma once
 
-#include <Arduino.h> // Necesario para reconocer el modificador PROGMEM y tipos de datos base
+#include "config.h"
 
-// ============================================================================
-// DECLARACIÓN DE ARREGLOS CONSTANTES DE TEXTO (Almacenados en Flash)
-// ============================================================================
+#ifdef SD_CS_PIN
+  #include <SD.h>
 
-extern const char index_html[] PROGMEM;       // Interfaz de telemetría y consola interactiva WebSocket
-extern const char db_html[] PROGMEM;          // Vista del historial CSV almacenado en LittleFS con paginación
-extern const char login_html[] PROGMEM;       // Formulario de acceso protegido por cookies seguras
-extern const char wifi_setup_html[] PROGMEM;  // Captive portal para configuración WiFi inicial
-extern const char config_html[] PROGMEM; // Panel de configuración del sistema
+  bool inicializarSD();
+  bool guardarLineaSD(const String& linea);
+  bool eliminarCSV_SD();
+  bool existeCSV_SD();
+  size_t tamanoCSV_SD();
+#else
+  inline bool inicializarSD() { return false; }
+  inline bool guardarLineaSD(const String&) { return false; }
+  inline bool eliminarCSV_SD() { return false; }
+  inline bool existeCSV_SD() { return false; }
+  inline size_t tamanoCSV_SD() { return 0; }
+#endif
