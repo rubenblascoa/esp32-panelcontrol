@@ -57,23 +57,8 @@
 >**[Explore PCBWay's manufacturing services here](https://www.pcbway.com/)**
 
 
-
+---
 </div>
-
-
----
-
-## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:mail.svg?color=white"><img src="https://api.iconify.design/lucide:mail.svg?color=black" width="26" align="center"></picture> Contact & Sponsorship
-
-Developed with passion by **Ruben Blasco Armengod**.
-
-If you are interested in sponsoring the continuous expansion of this project, collaborating on custom hardware motherboard layouts, or embedding new sensors into the multi-tasking core, please reach out through any of the following technical channels:
-
-* **GitHub:** [@rubenblascoa](https://github.com/rubenblascoa)
-* **Instagram:** [@rubenblascoa](https://instagram.com/rubenblascoa)
-* **Email:** rubenblascoarmengod@gmail.com
-
----
 
 ## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:folder-tree.svg?color=white"><img src="https://api.iconify.design/lucide:folder-tree.svg?color=black" width="26" align="center"></picture> Architecture and Modular Structure
 
@@ -304,3 +289,17 @@ Below is the execution environment of the Operating System. Click on the dropdow
 
 </details>
 
+
+---
+
+## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:mail.svg?color=white"><img src="https://api.iconify.design/lucide:mail.svg?color=black" width="26" align="center"></picture> Contact & Sponsorship
+
+Developed with passion by **Ruben Blasco Armengod**.
+
+If you are interested in sponsoring the continuous expansion of this project, collaborating on custom hardware motherboard layouts, or embedding new sensors into the multi-tasking core, please reach out through any of the following technical channels:
+
+* **GitHub:** [@rubenblascoa](https://github.com/rubenblascoa)
+* **Instagram:** [@rubenblascoa](https://instagram.com/rubenblascoa)
+* **Email:** rubenblascoarmengod@gmail.com
+
+---
