@@ -85,15 +85,15 @@ byte dumpTarjeta[1024];           //  Buffer para dump completo (16 sectores x 4
 bool dumpValido = false;          //  Flag de integridad del dump completo
 
 // Punteros de Estado Base y Flags de Modulos Hardware
-int programaActivo = 0;           //  Comienza en el menú principal por defecto en el arranque
+volatile int programaActivo = 0;  //  Comienza en el menú principal por defecto en el arranque
 int modoNFC = 0;                  //  Subrutinas NFC inactivas en el inicio del firmware
 bool memoriaLlena = false;        //  Indica que el búfer bloqueEscaneado está vacío al iniciar
-bool midiendoDistancia = false;   //  El sensor ultrasónico comienza apagado (sin lanzar ráfagas)
+volatile bool midiendoDistancia = false; //  El sensor ultrasónico comienza apagado (sin lanzar ráfagas)
 bool ledState = LOW;              //  Estado eléctrico inicial bajo (apagado)
 
 // Estado Compartido de Sensores Ambientales
-float temperaturaActual = -127.0; // Centinela de "sin lectura": el menú y la LCD lo detectan y muestran "Sin dato"
-float humedadActual = -1.0;       // Centinela de "sin lectura": -1.0 indica que el sensor no ha respondido aún
+volatile float temperaturaActual = -127.0; // Centinela de "sin lectura": el menú y la LCD lo detectan y muestran "Sin dato"
+volatile float humedadActual = -1.0;       // Centinela de "sin lectura": -1.0 indica que el sensor no ha respondido aún
 
 // Registros Temporales de Reloj Interno (Inicializados a Cero)
 unsigned long tiempoUltimoMenuPrincipal = 0; //  Instante inicial para refrescos
@@ -116,9 +116,9 @@ SemaphoreHandle_t spiMutex = nullptr;
 
 // Autenticación Telnet
 const char* TELNET_PASSWORD = "blasco";      // Contraseña para acceso Telnet
-bool telnetAutenticado = false;              // Flag de autenticación Telnet
-int telnetIntentos = 0;                      // Contador de intentos fallidos Telnet
-unsigned long tiempoUltimaActividadTelnet = 0; // Timestamp de última actividad Telnet
+volatile bool telnetAutenticado = false;              // Flag de autenticación Telnet
+volatile int telnetIntentos = 0;                      // Contador de intentos fallidos Telnet
+volatile unsigned long tiempoUltimaActividadTelnet = 0; // Timestamp de última actividad Telnet
 
 // Tarjeta SD
 bool sdDisponible = false;                   // Flag de disponibilidad de la tarjeta SD

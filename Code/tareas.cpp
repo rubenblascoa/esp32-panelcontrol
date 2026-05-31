@@ -203,13 +203,26 @@ void taskCore0(void * pvParameters) {
 }
 
 // ============================================================================
-// CORE 1: LCD, DHT11, NEOPIXEL, TERMINAL INPUT, SENSORES FSM
+// TAREA INDEPENDIENTE DHT11 (Core 1, prioridad 0)
+// Evita que noInterrupts() (~5ms) bloquee el loop principal de Core 1
+// ============================================================================
+void taskDHT(void * pvParameters) {
+  inicializarDHT();
+  unsigned long tiempoUltimoDHT = 0;
+  for (;;) {
+    if (millis() - tiempoUltimoDHT >= 3000UL) {
+        tiempoUltimoDHT = millis();
+        actualizarDHT();
+    }
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
+
+// ============================================================================
+// CORE 1: LCD, NEOPIXEL, TERMINAL INPUT, SENSORES FSM (DHT11 en taskDHT)
 // ============================================================================
 void taskCore1(void * pvParameters) {
-  inicializarDHT();
-
   unsigned long tiempoUltimoLCD = 0;
-  unsigned long tiempoUltimoDHT = 0;
   unsigned long tiempoUltimoLED = 0;
 
   uint32_t inicioCiclo1 = micros();
@@ -222,12 +235,6 @@ void taskCore1(void * pvParameters) {
     if (millis() - tiempoUltimoLCD >= 3000) {
         tiempoUltimoLCD = millis();
         actualizarLCD();
-    }
-
-    // --- DHT11 (cada 3s) ---
-    if (millis() - tiempoUltimoDHT >= 3000UL) {
-        tiempoUltimoDHT = millis();
-        actualizarDHT();
     }
 
     // --- NEOPIXEL ---
@@ -300,6 +307,7 @@ void taskCore1(void * pvParameters) {
         } else if (d == -2) {
           Terminal.println(" -> Distancia: FUERA DE RANGO");
         }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
       }
     }
     else if (programaActivo == 3) {

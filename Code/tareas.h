@@ -44,3 +44,10 @@ void taskCore0(void * pvParameters); //
  * @param pvParameters Puntero genérico a parámetros de FreeRTOS (asignado a NULL por defecto).
  */
 void taskCore1(void * pvParameters); //
+
+/**
+ * @brief Tarea independiente para el DHT11 en Core 1 con prioridad 0.
+ *        Evita que noInterrupts() bloquee el loop principal de Core 1.
+ * @param pvParameters Puntero genérico a parámetros de FreeRTOS (asignado a NULL por defecto).
+ */
+void taskDHT(void * pvParameters); //

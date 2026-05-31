@@ -170,6 +170,9 @@ void setup() {
   delay(500);
 
   xTaskCreatePinnedToCore(taskCore1, "AppTask", 16384, NULL, 1, NULL, 1);
+  delay(100);
+
+  xTaskCreatePinnedToCore(taskDHT, "DHTTask", 4096, NULL, 0, NULL, 1);
 
   // Notificación de culminación exitosa de los servicios de arranque básicos 
   Serial.println("[EXITO] Todo el sistema esta ONLINE.");  // 

@@ -142,18 +142,22 @@ void iniciarServidorWeb() {
   });
 
   server->on("/datos.csv", HTTP_GET, [](AsyncWebServerRequest *request){ 
-    if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; } 
+    if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; }
+    String path = "/datos.csv";
+    if (path.indexOf("..") != -1) { request->send(400, "text/plain", "Ruta invalida"); return; }
     #ifdef SD_CS_PIN
     if (sdDisponible && existeCSV_SD()) {
-      request->send(SD, "/datos.csv", "text/csv");
+      request->send(SD, path, "text/csv");
       return;
     }
     #endif
-    request->send(LittleFS, "/datos.csv", "text/csv");
+    request->send(LittleFS, path, "text/csv");
   });
 
   server->on("/delete-db", HTTP_GET, [](AsyncWebServerRequest *request){
-      if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; } 
+      if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; }
+      String path = "/datos.csv";
+      if (path.indexOf("..") != -1) { request->send(400, "text/plain", "Ruta invalida"); return; }
       
       if (sdDisponible && existeCSV_SD()) {
           eliminarCSV_SD();
@@ -426,6 +430,9 @@ void iniciarServidorWeb() {
       [](AsyncWebServerRequest *request){
           if(!estaLogueado(request)) { request->send(401, "text/plain", "Acceso Denegado"); return; }
 
+          String path = "/datos.csv";
+          if (path.indexOf("..") != -1) { request->send(400, "text/plain", "Ruta invalida"); return; }
+
           String* csvBody = (String*) request->_tempObject;
           if (!csvBody || csvBody->length() == 0) {
               if (csvBody) delete csvBody;
@@ -436,7 +443,7 @@ void iniciarServidorWeb() {
           size_t len = csvBody->length();
           #ifdef SD_CS_PIN
           if (sdDisponible) {
-              File file = SD.open("/datos.csv", FILE_WRITE);
+              File file = SD.open(path, FILE_WRITE);
               if (!file) {
                   delete csvBody;
                   request->send(500, "text/plain", "Error al abrir el archivo en SD");
@@ -446,7 +453,7 @@ void iniciarServidorWeb() {
               file.close();
           } else {
           #endif
-              File file = LittleFS.open("/datos.csv", "w");
+              File file = LittleFS.open(path, "w");
               if (!file) {
                   delete csvBody;
                   request->send(500, "text/plain", "Error al abrir el archivo");

@@ -133,15 +133,15 @@ extern byte dumpTarjeta[1024];     //  Buffer para dump completo (16 sectores x 
 extern bool dumpValido;            //  Flag de integridad del dump completo
 
 // Máquinas de Estado Operativas
-int extern programaActivo;         //  Estado del módulo ejecutor principal (FSM General)
+extern volatile int programaActivo; //  Estado del módulo ejecutor principal (FSM General)
 int extern modoNFC;                //  Sub-estado secuencial para la máquina de control RFID
 bool extern memoriaLlena;          //  Flag de validación de integridad para indicar datos RFID cargados
-bool extern midiendoDistancia;     //  Estado lógico de activación del sensor acústico de distancia
+extern volatile bool midiendoDistancia; //  Estado lógico de activación del sensor acústico de distancia
 bool extern ledState;              //  Registro de alternancia eléctrica para el parpadeo del LED
 
 // Variables de Sensores Ambientales
-extern float temperaturaActual;    // Ultima lectura valida de temperatura en grados Celsius
-extern float humedadActual;        // Ultima lectura valida de humedad relativa en porcentaje
+extern volatile float temperaturaActual; // Ultima lectura valida de temperatura en grados Celsius
+extern volatile float humedadActual;     // Ultima lectura valida de humedad relativa en porcentaje
 
 // Temporizadores Basados en Tiempo de CPU (millis)
 extern unsigned long tiempoUltimoMenuPrincipal; //  Almacenamiento del último instante del menú base
@@ -169,6 +169,6 @@ extern bool sdDisponible;
 
 // Autenticación Telnet
 extern const char* TELNET_PASSWORD;
-extern bool telnetAutenticado;
-extern int telnetIntentos;
-extern unsigned long tiempoUltimaActividadTelnet; // Timestamp de última actividad Telnet
+extern volatile bool telnetAutenticado;
+extern volatile int telnetIntentos;
+extern volatile unsigned long tiempoUltimaActividadTelnet; // Timestamp de última actividad Telnet

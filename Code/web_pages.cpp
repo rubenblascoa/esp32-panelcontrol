@@ -391,7 +391,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     </div>
 
     <footer class="footer-zenith">
-        <p>© 2024 ZenithMC Network. Todos los derechos reservados.</p>
+        <p>© 2026 ZenithMC Network. Todos los derechos reservados.</p>
         <p><a href="mailto:soporte@zenithmc.es">soporte@zenithmc.es</a></p>
         <div style="margin-top: 20px;">
             <a href="/logout" class="btn-accion-logout">
