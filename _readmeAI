@@ -1,4 +1,4 @@
-<!-- dsds
+<!-- 
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  READMEAI v2.3 — AI-TO-AI PROJECT CONTEXT FILE                     ║
   ║  Written by AI. Read by AI. Zero human dependency.                 ║
@@ -28,6 +28,9 @@
 2. Load CURRENT SESSION STATE. Resume without asking the user to recap.
 3. Verify STRUCTURE MAP against the task. Update stale entries at session end, not now.
 4. **First-time setup only** (sections blank): scan the project once, fill every section, ask only for what cannot be inferred. Never repeat this scan.
+
+### ⚠️ CRITICAL: Keep context in sync
+> Whenever this file (`.readmeAI`) is modified, **`readmeai_content.cpp` MUST be regenerated** to reflect the changes. The PROGMEM string in `readmeai_content.cpp` is a snapshot of this file + `pcb_context.md` + GitHub README, served at `/.readmeAI` for Blasco AI. If `.readmeAI` changes and `readmeai_content.cpp` is not updated, Blasco AI will receive stale context. Same applies if `pcb_context.md` or the GitHub README content changes.
 
 ### Session end sequence — mandatory, silent, no user prompt needed
 1. Overwrite CURRENT SESSION STATE with live work state.
@@ -73,12 +76,12 @@ Unified firmware for ESP32-S3 that provides multiple independent modules (NFC cl
 7. LCD diagnostic display with rotating metrics
 8. Over-the-air firmware updates (OTA)
 9. Hybrid terminal (Telnet + WebSocket) for CLI access
+10. Blasco AI — Gemini-powered chat assistant embedded in the dashboard (sidebar panel, streaming responses, file attachments, live telemetry context)
 
 ### Non-goals
 - Mobile app (web UI is the remote interface)
 - Cloud sync or remote access beyond LAN
 - Multi-user support
-- End-to-end encryption or TLS
 - Support for NFC cards other than MIFARE Classic 1K
 - Audio/video processing
 - Real-time control loops (no hard real-time guarantees)
@@ -99,7 +102,13 @@ Ruben Blasco Armengod (personal project). Technical (embedded/hobbyist level). E
 | CSV | Auto-deletes at 8MB | Historical data loss if not exported before threshold |
 | Telnet | Single session only | New connection rejected while active session exists |
 | **Stack size** | **16KB per FreeRTOS task** | **Doubled from 8KB** to prevent stack overflow with ESPAsyncWebServer + ArduinoJson |
+| **HMAC** | HMAC-SHA256 via mbedTLS | Cloudflare Tunnel proxy request signing/verification (x-zenith-sig, 30s window) |
+| **CSV columns** | **11 columns** | Column 11 = `ultimaAlertaCritica` (col 10) — se escribe cuando seguridadNivel >= 3 |
 | **CPU load** | **EMA-smoothed** (30% raw + 70% prev) | Only recalculated every 1s per core to avoid micro()-based jitter |
+| **AI panel** | Google Gemini API via client-side fetch | API key stored in NVS on ESP32 (`/api/ai/key`), cached in JS variable, never in localStorage; supports gemini-2.5-flash, 2.0-flash, 1.5-flash/pro, 2.0-flash-lite; streaming SSE, file attachments, live telemetry in system prompt |
+| **Cloudflare Tunnel** | Worker + Durable Object (TunnelSession) | ESP32 connects via WebSocket (`/esp-tunnel`) to Worker. Browser connects via WebSocket (`/ws`) to same DO. Worker proxies HTTP requests to ESP32 via WebSocket request/response. All browser ↔ ESP32 traffic goes through the DO singleton. |
+| **Console format** | JSON `{"type":"ws_fwd","data":"..."}` | ESP32 sends console output as JSON ws_fwd messages via tunnel. Worker extracts `data` and forwards to browsers. LAN path sends raw text directly via ESPAsyncWebServer WebSocket. |
+| **CSV push on connect** | Last 500 rows via WebSocket | When a browser connects via tunnel, ESP32 reads the last 500 lines of `/datos.csv` (saltando líneas viejas) y las envía como `csv_data` JSON via WebSocket. Dashboard y DB se pueblan instantáneamente. |
 
 ### Business / domain rules
 - NFC cloning only works with "magic" (CUID/FUID) cards that accept block 0 writes. Standard MIFARE cards have block 0 locked at manufacturing.
@@ -143,14 +152,14 @@ Ruben Blasco Armengod (personal project). Technical (embedded/hobbyist level). E
 | Field | Value |
 |-------|-------|
 | **Name** | ESP32 Blasco OS |
-| **Version** | 0.2.0 |
+| **Version** | 0.3.0 |
 | **Phase** | `development` |
 | **Type** | Embedded firmware (ESP32-S3 N16R8) |
 | **Primary language** | C++ (Arduino framework) |
 | **Secondary languages** | HTML, CSS, JavaScript (web dashboard) |
 | **Repository** | github.com/rubenblacoa/esp32-panelcontrol |
 | **Deployment target** | ESP32-S3 N16R8 (16MB Flash, 8MB PSRAM) |
-| **Last updated** | 2026-05-31 |
+| **Last updated** | 2026-06-13 |
 | **Updated by** | AI |
 
 ---
@@ -170,8 +179,10 @@ Ruben Blasco Armengod (personal project). Technical (embedded/hobbyist level). E
 | Ultrasonic | HC-SR04 | — | TRIG=15, ECHO=16, ISR-based non-blocking |
 | Temp/Humidity | DHT11 | — | DATA=GPIO4, **native 1-Wire bit-banging (no Adafruit library)** |
 | OTA | ArduinoOTA | — | Over-the-air updates |
-| Persistence | Preferences (NVS) | — | 3 namespaces: zenithmc, hwconfig, webcred |
+| Persistence | Preferences (NVS) | — | 4 namespaces: zenithmc, hwconfig, webcred, aikey |
 | Storage | SD Card (SPI mode) | — | Optional, #ifdef SD_CS_PIN |
+| Cloudflare Workers | — | — | Tunnel relay: ESP32 ↔ Worker ↔ Browser (WebSocket + HTTP proxy) |
+| WebSocket Library (ESP32) | WebSockets (by Markus Sattler) | — | `cfWsClient` for tunnel connection to Worker |
 
 ---
 
@@ -190,24 +201,42 @@ project-root/
 ├── config.cpp                         ← Global variable definitions (WiFi creds, NFC block, timing, etc.)
 ├── menus.h                            ← Menu function declarations
 ├── menus.cpp                          ← Main menu, NFC menu, Ultrasonidos, DHT menu — display + input parsing
-├── nfc.h                              ← NFC function declarations
-├── nfc.cpp                            ← MIFARE block read/write via MFRC522 (SPI)
+├── modules.h                          ← Modulo struct definition for module registry (NEW)
+├── nfc.h                              ← NFC function declarations + Modulo struct instance + error recovery
+├── nfc.cpp                            ← MIFARE block read/write via MFRC522 (SPI) + hardware reinit
 ├── tareas.h                           ← FreeRTOS task declarations
-├── tareas.cpp                         ← Core 0 (network/OTA/WebSocket/CSV cron) + Core 1 (LCD/DHT/input/FSM)
+├── tareas.cpp                         ← Core 0 (network/OTA/WebSocket/CSV cron/HMAC proxy) + Core 1 (LCD/DHT/input/module dispatch)
 ├── terminal.h                         ← TerminalHibrida class declaration (extends Print)
 ├── terminal.cpp                       ← Hybrid terminal: Telnet + WebSocket dual-path output
-├── ultrasonidos.h                     ← Ultrasonic function declaration
+├── ultrasonidos.h                     ← Ultrasonic function declarations + Modulo struct instance + error recovery
 ├── ultrasonidos.cpp                   ← HC-SR04 distance measurement (ISR-based, non-blocking, no pulseIn)
-├── dht.h                              ← DHT11 temperature/humidity function declarations
-├── dht.cpp                            ← DHT11 native 1-Wire protocol (bit-banging, no external library)
-├── utils.h                            ← Utility function declarations
-├── utils.cpp                          ← CPU load (EMA smoothed), uptime, NTP datetime, CSV logging, LCD 5-page rotation, NVS persistence
+├── dht.h                              ← DHT11 temperature/humidity function declarations + Modulo struct instance + error recovery
+├── dht.cpp                            ← DHT11 native 1-Wire protocol + hardware reinit
+├── utils.h                            ← Utility function declarations (hmacSha256)
+├── utils.cpp                          ← CPU load, uptime, NTP, CSV logging, LCD, NVS, HMAC-SHA256
 ├── web_server.h                       ← Web server function declarations
-├── web_server.cpp                     ← HTTP routes (19 endpoints), WebSocket handler, login auth, config API
-├── web_pages.h                        ← PROGMEM HTML page declarations (5 pages)
-├── web_pages.cpp                      ← 5 HTML pages: login, dashboard, DB viewer, wifi_setup, config
+├── web_server.cpp                     ← HTTP routes (22 endpoints), WebSocket handler, CSV pagination, certs.h include
+├── web_pages.h                        ← PROGMEM HTML page declarations (5 pages, now includes pages/*.h)
+├── web_pages.cpp                      ← 6-page split: #include "pages/page_*.h" (antes inline HTML)
+├── pages/                             ← Carpeta con páginas HTML extraídas de web_pages.cpp (NEW)
+│   ├── page_index.h                   ← Main dashboard + terminal WebSocket (1867 líneas)
+│   ├── page_db.h                      ← DB viewer with pagination (628 líneas)
+│   ├── page_login.h                   ← Login form (270 líneas)
+│   ├── page_wifi.h                    ← WiFi captive portal (846 líneas)
+│   ├── page_config.h                  ← Configuration panel (1547 líneas)
+│   └── page_landing.h                 ← Public landing page (975 líneas)
+├── certs.h                            ← HTTPS cert/key PEM arrays (EC-256, #ifdef HTTPS_ENABLED, NEW)
 ├── sd_card.h                          ← SD card function declarations (optional, #ifdef SD_CS_PIN)
-└── sd_card.cpp                        ← SD card init, CSV append/delete/exists/size (SPI mode)
+├── sd_card.cpp                        ← SD card init, CSV append/delete/exists/size, last-500-lines leerCSV_SD()
+├── worker.js                          ← Cloudflare Worker: HMAC signing, Durable Object TunnelSession
+├── wrangler.toml                      ← Worker deployment config (ESP_TOKEN, TunnelSession DO binding)
+├── package.json                       ← Node deps for Worker (wrangler)
+├── readmeai_content.h                 ← PROGMEM extern declaration for /.readmeAI endpoint
+├── readmeai_content.cpp               ← Combined .readmeAI + GitHub README + pcb_context PROGMEM content
+│                                       ⚠️ REGENERATE when .readmeAI, pcb_context.md or README changes
+├── pcb_context.md                     ← Hardware context (PCB1) — included in readmeai_content.cpp
+└── test/                              ← Carpeta de tests unitarios (NEW)
+    └── test_utils.cpp                 ← Unity Test: HMAC-SHA256, CSV snprintf
 ```
 
 ### Architecture pattern
@@ -228,28 +257,31 @@ Not applicable — flat Arduino project structure. All files in project root.
 |--------|----------|-------------|
 | `setup()` | main.ino:42 | System init: NVS config load, Serial, I2C, LCD, WiFi, NTP, OTA, SPI, MFRC522 (pointer), FreeRTOS tasks (16KB stack), CSV size check |
 | `loop()` | main.ino:186 | Self-destructs via `vTaskDelete(NULL)` — delegates to FreeRTOS |
-| `taskCore0()` | tareas.cpp:40 | Core 0 loop: LittleFS mount, OTA (with password), Telnet (auth + 5min timeout), WebSocket telemetry (3s), CSV cron (NTP every 2h on :00, checked every 30s, anti-duplicate) |
-| `taskCore1()` | tareas.cpp:199 | Core 1 loop: DHT init, LCD (3s, 5 pages), DHT11 (3s), NeoPixel, input multiplexer, FSM (menu/NFC/Ultrasonidos/DHT) |
+| `taskCore0()` | tareas.cpp:40 | Core 0 loop: LittleFS mount, OTA (with password), Telnet (auth + 5min timeout), WebSocket telemetry (3s), CSV cron (NTP every 2h on :00, checked every 30s, anti-duplicate), **tunnel proxy + ws_fwd push**, **HMAC verification in proxy handler** |
+| `taskCore1()` | tareas.cpp:199 | Core 1 loop: DHT init, LCD (3s, 5 pages), DHT11 (3s), NeoPixel, input multiplexer, **module dispatch via Modulo array** (recorre modulos[] en vez de if/else if FSM), **hardware error recovery** (fallosNFC/DHT/Ultrasonidos → reinit) |
+| `TunnelSession.fetch()` | worker.js:58 | Cloudflare Worker entry: routes `/esp-tunnel` (ESP32 WS), `/ws` (browser WS), all other paths (HTTP proxy to ESP32) |
 
 ### Core functions / methods
 | Symbol | Location | Description |
 |--------|----------|-------------|
-| `mostrarMenuPrincipal()` | menus.cpp:36 | Print main menu + telemetry banner (flash, RAM, DHT, CPU, uptime, IP) |
-| `procesarMenuPrincipal(String)` | menus.cpp:102 | Parse main menu input (1=NFC, 2=Ultrasonidos, 3=DHT) |
-| `mostrarMenuNFC()` | menus.cpp:122 | Print NFC cloning station menu + memory status |
-| `procesarEntradaNFC(String)` | menus.cpp:151 | Parse NFC submenu input (1=read+save, 2=clone, M=exit) |
-| `mostrarMenuUltrasonidos()` | menus.cpp:179 | Print ultrasonic radar menu (1=start, 2=stop, M=exit) |
-| `mostrarMenuDHT()` | menus.cpp:199 | Print DHT11 sensor menu with last reading |
-| `procesarEntradaDHT(String)` | menus.cpp:224 | Parse DHT submenu input (1=read now with `actualizarDHT()`, M=exit) |
-| `modoLecturaNFC()` | nfc.cpp:93 | Poll card, try all 20 keys from dictionary per sector, auth with first matching key, read all 64 blocks → dumpTarjeta[1024], print dump + used key to terminal, 2s anti-bounce |
-| `modoEscrituraNFC()` | nfc.cpp:168 | Poll target card, auth with stored per-sector key (fallback to dictionary), write all 64 blocks from dumpTarjeta, 3s EEPROM settle |
-| `autenticarSector(byte)` | nfc.cpp:43 | Try previous sector's key first (optimization), then all 20 dictionary keys; store successful key in sectorKeyExitosas[] |
+| `Modulo` | modules.h:1 | Struct: `nombre`, `entrada()`, `loop()`, `icono`. Cada sensor expone un `const Modulo` |
+| `moduloNFC` | nfc.cpp:240 | Modulo instance for NFC module |
+| `moduloUltrasonidos` | ultrasonidos.cpp:280 | Modulo instance for Ultrasonic module |
+| `moduloDHT` | dht.cpp:150 | Modulo instance for DHT11 module |
+
+### Core functions / methods
+| Symbol | Location | Description |
+|--------|----------|-------------|
+| `hmacSha256(const String&, const String&)` | utils.cpp:270 | HMAC-SHA256 via mbedTLS, returns lowercase hex string (64 chars) |
+| `reinicializarNFC()` | nfc.cpp:230 | NFC hardware reinit: SPI.end() + delay + SPI.begin() + PCD_Init (used after fallosNFC >= 3) |
+| `reinicializarUltrasonidos()` | ultrasonidos.cpp:270 | HC-SR04 reinit: detachInterrupt + pin reset + attachInterrupt (used after fallosUltrasonidos >= 3) |
+| `reinicializarDHT()` | dht.cpp:140 | DHT11 reinit: pin mode reset + inicializarDHT() (used after fallosDHT >= 3) |
 | `medirDistanciaFisica()` | ultrasonidos.cpp:50 | HC-SR04 ISR-based FSM: sends trigger (10us), attach interrupt on CHANGE, returns -1 (waiting), -2 (timeout 30ms), or cm |
 | `ecoISR()` | ultrasonidos.cpp:41 | **IRAM_ATTR** ISR for CHANGE on ECHO_PIN — captures ecoStart/ecoDuration |
 | `inicializarDHT()` | dht.cpp:88 | Init DHT11 bus, attempt one read for diagnostics. **Executed on Core 1** (taskCore1) |
 | `leerTemperatura()` | dht.cpp:103 | Read temperature °C via native 1-Wire, return -127.0 on error |
 | `leerHumedad()` | dht.cpp:115 | Read humidity % via native 1-Wire, return -1.0 on error |
-| `actualizarDHT()` | dht.cpp:127 | Read both temp+hum via native 1-Wire with **1 retry after 1s**, update globals, return bool. Retry uses vTaskDelay (no delay()) |
+| `actualizarDHT()` | dht.cpp:127 | Read both temp+hum via native 1-Wire with **3 retries after 500ms**, update globals, return bool. Silent on intermittent failures — only prints error after >5min without success. Prints recovery message when sensor resumes. |
 | `calcularUsoCPU(int)` | utils.cpp:34 | Real CPU load per core via micros() cycle timing, EMA-smoothed (30/70), recalculated every 1s |
 | `obtenerUptime()` | utils.cpp:68 | millis() → "HH:MM:SS" |
 | `obtenerFechaHora()` | utils.cpp:80 | NTP time → "DD/MM/YYYY HH:MM", returns "00/00/00 00:00" on failure |
@@ -263,8 +295,10 @@ Not applicable — flat Arduino project structure. All files in project root.
 | `borrarCredenciales()` | utils.cpp:166 | Clear NVS namespace `zenithmc` |
 | `guardarSetupCompletado()` | utils.cpp:175 | Set `setupDone=true` in NVS |
 | `setupCompletado()` | utils.cpp:184 | Check `setupDone` in NVS |
+| `guardarClaveAI(String)` | utils.cpp:241 | Save Gemini API Key to NVS namespace `aikey` |
+| `cargarClaveAI()` | utils.cpp:250 | Load Gemini API Key from NVS, returns empty string if not set |
 | `actualizarLCD()` | utils.cpp:245 | Rotate **5 LCD pages** (TEMP+CPU, C0+C1, RAM+FLASH, WIFI+UPTIME, DHT) with progress bars via I2C mutex |
-| `iniciarServidorWeb()` | web_server.cpp:89 | Register all HTTP routes (19 endpoints) + WebSocket, set TZ, start server |
+| `iniciarServidorWeb()` | web_server.cpp:89 | Register all HTTP routes (22 endpoints) + WebSocket, set TZ, start server |
 | `estaLogueado(AsyncWebServerRequest*)` | web_server.cpp:40 | Validate ZENITH_SESSION cookie |
 | `onWsEvent(...)` | web_server.cpp:53 | WebSocket connect/disconnect/data handler (max 2 clients, malloc+memcpy for safe framing) |
 | `inicializarSD()` | sd_card.cpp:34 | Init SD card on custom SPI bus (#ifdef SD_CS_PIN) |
@@ -272,11 +306,18 @@ Not applicable — flat Arduino project structure. All files in project root.
 | `eliminarCSV_SD()` | sd_card.cpp:55 | Delete /datos.csv from SD |
 | `existeCSV_SD()` | sd_card.cpp:60 | Check /datos.csv exists on SD |
 | `tamanoCSV_SD()` | sd_card.cpp:65 | Get size of /datos.csv on SD |
+| `jsonStr(const String&)` | tareas.cpp:51 | Escape string for JSON embedding. Declared in utils.h, used by terminal.cpp for ws_fwd messages. |
+| `enviarRespuestaProxy(...)` | tareas.cpp:81 | Send chunked HTTP response via tunnel (chunked WebSocket messages). |
+| `procesarProxyTunnel()` | tareas.cpp:177 | Handle tunnel HTTP requests: landing `/` (public), login, dashboard `/dashboard`, config `/config`, db `/db`, API endpoints, TCP fallback for rest. |
+| `_attachESP(ws)` | worker.js:87 | Worker: accepts ESP32 WebSocket, processes auth + ws_fwd + proxy request/responses. |
+| `_attachBrowser(ws)` | worker.js:225 | Worker: accepts browser WebSocket, forwards telemetry to ESP, relays ws_fwd to browsers. |
+| `_proxyToESP(request, url)` | worker.js:257 | Worker: proxies HTTP requests to ESP32 via WebSocket, with cache + timeout fallback. |
+| `_flushBuffer(const String&)` | terminal.cpp:38 | Flushes console buffer to LAN WebSocket + tunnel WebSocket in JSON format. Uses local copy to avoid race condition. |
 
 ### Key classes / modules
 | Symbol | Location | Description |
 |--------|----------|-------------|
-| `TerminalHibrida : public Print` | terminal.h:35 | Singleton hybrid terminal (Telnet + WebSocket). Buffered block mode with `iniciarBloque()`/`enviarBloque()`. Anti-OOM safeguard (200 chars flush). Instance: `Terminal` |
+| `TerminalHibrida : public Print` | terminal.h:35 | Singleton hybrid terminal (Telnet + WebSocket). Buffered block mode with `iniciarBloque()`/`enviarBloque()`. Anti-OOM safeguard (200 chars flush). **Race-safe**: `_flushBuffer` copies buffer before clearing + slow JSON ops on local copy. Instance: `Terminal` |
 
 ### Configuration & constants
 | Symbol | Value | Location | Description |
@@ -309,6 +350,27 @@ Not applicable — flat Arduino project structure. All files in project root.
 | `cmdQueue` | QueueHandle_t | config.cpp:71 | FreeRTOS queue for inter-core command passing (10 items) |
 | `tiempoProcesamientoCore[2]` | volatile | config.cpp:103 | micros of actual work per core per cycle |
 | `tiempoCicloCore[2]` | volatile (default 10000) | config.cpp:104 | micros of total cycle duration per core |
+
+### Security system
+| Symbol | Value | Location | Description |
+|--------|-------|----------|-------------|
+| `seguridad.habilitado` | bool (default true) | config.cpp (Seguridad) | Master security toggle (enabled/disabled) |
+| `modoSeguridad` | bool (default false) | config.cpp:136 | Active alert state |
+| `seguridadManual` | bool (default false) | config.cpp:137 | Manual activation flag (prevents auto-recovery) |
+| `alertaEnviada` | bool (default false) | config.cpp:138 | WS broadcast guard |
+| `causaSeguridad` | String (default "") | config.cpp:139 | Active alert cause text |
+| `seguridadNivel` | volatile uint8_t (0-3) | config.cpp:140 | 0=normal, 1=info, 2=warning, 3=critical |
+| `seguridadMedidas` | String (default "") | config.cpp:141 | JSON array of active safety measures |
+| `SEG_TEMP_CPU_MAX` | 80.0f | config.h:234 | Critical CPU temperature threshold |
+| `SEG_TEMP_DHT_MAX` | 35.0f | config.h:235 | Critical ambient temperature threshold |
+| `SEG_CPU_MAX` | 90 | config.h:236 | Critical CPU load threshold |
+| `SEG_RAM_MAX` | 90.0f | config.h:237 | Critical RAM usage threshold |
+| `SEG_WIFI_MIN` | -85 | config.h:238 | Critical WiFi RSSI threshold (dBm) |
+| `SEG_WARN_TEMP_CPU_MAX` | 60.0f | config.h:241 | Warning CPU temperature threshold |
+| `SEG_WARN_TEMP_DHT_MAX` | 40.0f | config.h:242 | Warning ambient temperature threshold |
+| `SEG_WARN_CPU_MAX` | 80 | config.h:243 | Warning CPU load threshold |
+| `SEG_WARN_RAM_MAX` | 80.0f | config.h:244 | Warning RAM usage threshold |
+| `SEG_WARN_WIFI_MIN` | -80 | config.h:245 | Warning WiFi RSSI threshold (dBm) |
 
 ### Types / schemas / interfaces
 | Symbol | Location | Description |
@@ -417,18 +479,20 @@ Not applicable — flat Arduino project structure. All files in project root.
 
 > **Goal: understand data flow without reading schema or route files.**
 
-### Exposed endpoints (19 routes)
+### Exposed endpoints (via direct web server + tunnel proxy)
 | Method | Path | Auth | Input shape | Output shape | Notes |
 |--------|------|------|------------|-------------|-------|
 | GET | `/login-page` | No | — | HTML (login_html) | Login form |
 | POST | `/login` | No | `{ user, pass }` | Redirect + Set-Cookie | user/pass validated against runtime `webUser`/`webPass` (NVS) |
 | GET | `/logout` | No | — | Redirect + Clear-Cookie | — |
-| GET | `/` | Cookie | `?auth=true` | HTML (index_html or wifi_setup_html) | Dashboard if logged in; captive portal if in setup mode |
+| GET | `/` | No | — | HTML (landing_html) | **Landing page pública** (no auth). Acceso directo al dashboard via enlace. |
+| GET | `/dashboard` | Cookie | `?auth=true` | HTML (index_html) | Dashboard principal (protegido) |
 | GET | `/db` | Cookie | — | HTML (db_html) | DB viewer |
 | GET | **`/config`** | Cookie | — | HTML (config_html) | **System config panel**: pin mapping + web credentials |
 | GET | **`/setup`** | No | — | HTML (wifi_setup_html) | **Captive portal page** (only when `modoConfiguracion=true`) |
 | GET | `/datos.csv` | Cookie | — | CSV stream | /datos.csv from LittleFS or SD |
 | GET | `/delete-db` | Cookie | — | "OK" text | Deletes /datos.csv (LittleFS or SD) |
+| GET | **`/api/csv`** | Cookie | `?page=N&size=M` | CSV plain text, header `X-Total-Lines: N` | CSV paginado, newest-first, máx 500 filas por página |
 | GET | `/api/system/info` | Cookie | — | JSON: chip, ip, flash_kb, flash_pct, psram_kb, heap_pct, uptime, fs_usado_kb | — |
 | GET | **`/api/config/info`** | Cookie | — | JSON: `{ip, ssid, rssi, user, pins:{nfcRst, nfcSs, trigPin, echoPin, dhtPin}}` | Current config state for /config page |
 | POST | **`/api/config/webcred`** | Cookie | `{user, currentPass, newPass}` | `{"status":"ok"}` | Change web user/pass (validates current password) |
@@ -439,28 +503,47 @@ Not applicable — flat Arduino project structure. All files in project root.
 | GET | `/api/wifi/status` | No | — | `{"status":"connected/connecting/failed/idle", "ip":"..."}` | Connection progress polling (15s timeout) |
 | POST | `/api/wifi/reset` | No | — | `{"status":"ok"}` | Clears NVS + reboots |
 | POST | `/import-csv` | Cookie | CSV body (text/plain) | "OK" | Imports/replaces /datos.csv (LittleFS or SD) |
-| WS | `/ws` | — | Text (commands) | JSON (telemetry) | Bidirectional real-time; max 2 clients |
+| GET | **`/.readmeAI`** | No | — | Text (PROGMEM) | Combined .readmeAI + GitHub README context for Blasco AI |
+| GET | **`/api/ai/key`** | Cookie | — | `{"key":"..."}` | Returns Gemini API Key from NVS |
+| POST | **`/api/ai/key`** | Cookie | `{"key":"..."}` | `{"status":"ok"}` | Saves Gemini API Key to NVS namespace `aikey` |
+| WS | `/ws` (direct) | — | Text (commands) | JSON (telemetry) | Bidirectional real-time; max 2 clients **on LAN** |
+| **Tunnel** | | | | | |
+| WS | **`/esp-tunnel`** (Worker) | Token | `{"type":"auth","token":"..."}` | `{"type":"auth_ok"}` | ESP32 WebSocket to Worker. Listens on Worker DO `TunnelSession` |
+| WS | **`/ws`** (Worker) | — | Text (commands) | JSON/text | Browser WebSocket to Worker. Worker forwards `ws_fwd` + telemetry between ESP32 and browser |
+| HTTP | **`/*`** (Worker) | Cookie | — | HTML/JSON/CSV | Worker proxies HTTP to ESP32 via WebSocket request/response. Cache for `/`, `/db`, `/config`, `/login-page`. Timeout 8s → stale cache or deadline page. |
 
 ### External APIs consumed
 None.
 
 ### Core data models
 ```
-Entity: System Telemetry (CSV row in /datos.csv) — 10 columns
-  col  field           type       constraints         notes
-  0    timestamp       string     "DD/MM/YYYY HH:MM"  NTP sync required; "00/00/00 00:00" on failure
-  1    temperature     float      —                   ESP32-S3 core die temperature °C (via `temperatureRead()`)
-  2    cpuPercent      int        0-100               Overall CPU load (avg C0+C1, EMA-smoothed)
-  3    core0Percent    int        0-100               Core 0 load (EMA-smoothed)
-  4    core1Percent    int        0-100               Core 1 load (EMA-smoothed)
-  5    ramPercent      float      0-100               PSRAM/Heap usage %
-  6    flashPercent    float      0-100               LittleFS usage %
-  7    wifiSignal      int        0-100               WiFi signal strength (linearized from RSSI dBm, formula: `2 * (RSSI + 100)`)
-  8    dhtTemperature  float      —                   DHT11 ambient temperature °C (-127.0 = no data)
-  9    dhtHumidity     float      0-100               DHT11 relative humidity % (-1.0 = no data)
+Entity: System Telemetry (CSV row in /datos.csv) — 11 columns
+  col  field               type       constraints         notes
+  0    timestamp           string     "DD/MM/YYYY HH:MM"  NTP sync required; "00/00/00 00:00" on failure
+  1    temperature         float      —                   ESP32-S3 core die temperature °C (via `temperatureRead()`)
+  2    cpuPercent          int        0-100               Overall CPU load (avg C0+C1, EMA-smoothed)
+  3    core0Percent        int        0-100               Core 0 load (EMA-smoothed)
+  4    core1Percent        int        0-100               Core 1 load (EMA-smoothed)
+  5    ramPercent          float      0-100               PSRAM/Heap usage %
+  6    flashPercent        float      0-100               LittleFS usage %
+  7    wifiSignal          int        0-100               WiFi signal strength (linearized from RSSI dBm, formula: `2 * (RSSI + 100)`)
+  8    dhtTemperature      float      —                   DHT11 ambient temperature °C (-127.0 = no data)
+  9    dhtHumidity         float      0-100               DHT11 relative humidity % (-1.0 = no data)
+  10   ultimaAlertaCritica string     —                   Causa de la última alerta crítica de seguridad ("-" si no hay)
 
 CSV cron trigger: NTP-based, fires when tm_hour % 2 == 0 && tm_min == 0 && tm_sec < 5. Verified every 30s.
 ```
+
+### HMAC authentication (Cloudflare Tunnel proxy)
+- **Algorithm:** HMAC-SHA256
+- **Payload:** `timestamp + method + path + body` (strings concatenados)
+- **Header 1:** `x-zenith-time` — timestamp UNIX en segundos (enviado por Worker)
+- **Header 2:** `x-zenith-sig` — HMAC-SHA256 lowercase hex (64 chars)
+- **Secret:** `cfWorkerToken` (misma clave compartida usada para auth WebSocket del túnel)
+- **Verification:** ESP32 recibe request del Worker, calcula HMAC esperado con `hmacSha256(secret, payload)` y compara con `x-zenith-sig`. Rechaza si no coincide.
+- **Window:** 30s de tolerancia (timestamp no puede diferir más de 30s de la hora local del ESP32)
+- **Worker side:** `_proxyToESP()` y `_revalidateInBackground()` firman cada request antes de enviarlo al ESP32 via WebSocket.
+- **Library:** mbedTLS (`mbedtls_md_hmac_*` functions) en ESP32, Web Crypto API en Worker.
 
 ### Environment variables
 None — all configuration is compile-time (config.h) or hardcoded.
@@ -490,6 +573,7 @@ None — all configuration is compile-time (config.h) or hardcoded.
 | Web login password | NVS (namespace `webcred`) | NVS flash | None |
 | Session token | tokenSesionActiva (RAM) | Runtime variable | None |
 | NFC block data | bloqueEscaneado / bloque0Habitacion | RAM | None |
+| Gemini API Key | NVS (namespace `aikey`) | NVS flash | None |
 
 ### Input validation rules
 - Web login: `server.arg("user")` and `server.arg("pass")` compared as strings.
@@ -504,7 +588,8 @@ None — all configuration is compile-time (config.h) or hardcoded.
 | WebSocket | Command injection into Telnet CLI | None — commands executed as-is |
 | OTA | Unauthorized firmware flash | ArduinoOTA with password (webPass) |
 | Telnet (port 23) | Unauthenticated CLI access | Session guard with webPass auth |
-| No TLS | Credentials sent in plaintext | No mitigation |
+| Tunnel proxy (Cloudflare) | Request forgery to ESP32 | HMAC-SHA256 con x-zenith-sig + x-zenith-time window 30s |
+| No TLS | Credentials sent in plaintext | HTTPS disponible con #ifdef HTTPS_ENABLED (certs.h EC-256 reales) |
 
 ---
 
@@ -611,27 +696,33 @@ None.
 > **Overwrite each session. Not a log — a live snapshot.**
 
 ### Active objective
-Comprehensive bug fix and robustness improvement: reliable CSV cronjob every 2h, full NFC dump of 64 blocks, OTA with password, Telnet synchronized with web, DHT moved to Core 1, Telnet timeout, JSON endpoints without heap fragmentation.
+Implementar 10 mejoras estructurales desde `mejoras_esp32_blascos_os.html`: seguridad, memoria, escalabilidad, robustez.
 
 ### Context
-Session 2026-05-31. Fixed CSV cronjob (window 5s → full minute + anti-duplicate + boot save). Rewrote NFC for full 64-block dump (16 sectors × 4) with 0xFF keys. Added OTA password (same as webPass). Synchronized Telnet authentication with webPass. Moved inicializarDHT() from Core 0 to Core 1 to avoid blocking the network stack. Replaced delay(1000) with vTaskDelay in DHT. Increased vTaskDelay(1) to vTaskDelay(10/portTICK) on Core 0. Added 5min inactivity timeout to Telnet. Replaced String concatenation with StaticJsonDocument in /api/system/info and /api/config/info endpoints.
+Session 2026-06-13. Se implementaron 10 mejoras técnicas del documento `mejoras_esp32_blascos_os.html`:
+1. Watchdog LittleFS — esp_task_wdt_reset() antes/después de file.print() y guardarLineaSD()
+2. JSON concatenación → snprintf/reserve — 4 puntos de String += reemplazados por snprintf + reserve()
+3. CSV paginación — GET /api/csv?page=N&size=M (newest-first, X-Total-Lines, máx 500)
+4. Frontend paginación — cargarBaseDatos() → cargarPagina(), sin caché cliente
+5. HTTPS scaffolding — certs.h con #ifdef HTTPS_ENABLED, ServerType typedef, certs reales EC-256
+6. Cloudflare Tunnel HMAC — hmacSha256() con mbedTLS, verificación en proxy, firma en worker.js
+7. Module registry — modules.h con Modulo struct, dispatch por bucle en vez de if/else if FSM
+8. Hardware error recovery — contadores fallosNFC/DHT/Ultrasonidos, auto-reinicio tras umbral
+9. Tests — test/test_utils.cpp con Unity Test (HMAC, CSV snprintf)
+10. Split web_pages.cpp — 6 pages/page_*.h, web_pages.cpp solo incluye
 
 ### Last action taken
-- **NFC-003**: Added 20-key dictionary for MIFARE Classic authentication. `modoLecturaNFC` tries all keys per sector (previous sector's key first as optimization). `modoEscrituraNFC` uses stored per-sector keys. Successful keys tracked in `sectorKeyExitosas[16]` / `sectorAutenticado[16]`.
-- **NFC-002**: Full 64-block MIFARE Classic 1K dump in modoLecturaNFC + full clone in modoEscrituraNFC. New buffers dumpTarjeta[1024] and dumpValido. NFC key initialized to 0xFF.
-- **CSV-002**: CSV cronjob with expanded window (tm_min==0), anti-duplicate via ultimaHoraGuardada, boot save with primerGuardado. Variable renamed to avoid conflict.
-- **SEC-002**: OTA with setPassword(webPass.c_str()) + guard if webPass empty.
-- **TEL-002**: Telnet authentication synchronized with webPass (no longer uses hardcoded TELNET_PASSWORD). 5min inactivity timeout via tiempoUltimaActividadTelnet.
-- **DHT-003**: inicializarDHT() moved from Core 0 to Core 1. delay(1000) replaced with vTaskDelay(1000/portTICK).
-- **MAIN-007**: vTaskDelay(1) → vTaskDelay(10/portTICK) on Core 0 to avoid busy-loop.
-- **WEB-004**: /api/system/info and /api/config/info endpoints migrated to StaticJsonDocument.
-- **MAIN-008**: SPI.begin() ordering before new MFRC522 in setup().
+- MEJ-001 a MEJ-010: Implementadas las 10 mejoras.
+- Bugfix: llave } huérfana en web_server.cpp (línea 165) → eliminada.
+- Bugfix: certs.h actualizado con certificados EC-256 reales (ya no ////...).
+- Bugfix: CSV WebSocket en web_server.cpp y tareas.cpp ahora lee solo últimas 500 líneas.
+- .readmeAI actualizado con todos los cambios de la sesión.
 
 ### Next immediate step
-Awaiting user instructions.
+Compilar en Arduino IDE y verificar funcionamiento.
 
 ### Blockers
-- None.
+- No build system CLI disponible (Arduino IDE). Compilación manual requerida.
 
 ### Open questions
 None.
@@ -655,6 +746,23 @@ None.
 | 2026-05-31 | Telnet 5min inactivity timeout | No timeout (previous) | Hung sessions blocked new connections; timeout releases the socket |
 | 2026-05-31 | JSON endpoints with StaticJsonDocument | String concatenation (previous) | Each += caused heap reallocation → fragmentation; StaticJsonDocument fixes size on stack |
 | 2026-05-31 | SPI.begin() before new MFRC522 | new MFRC522 before SPI.begin() (previous) | Canonical order: SPI bus first; avoids crash if library accesses bus in constructor |
+| 2026-06-07 | Cloudflare Tunnel Worker como relay ESP32 ↔ Browser | VPN / port forwarding (previous) | Sin IP pública: Worker en Cloudflare como proxy HTTP + WebSocket relay. DO `TunnelSession` maneja estado compartido (ESP + browsers + pending requests) |
+| 2026-06-07 | Console format: JSON `{"type":"ws_fwd","data":"..."}` en vez de prefijo `ws_fwd:` | Prefijo plano `ws_fwd:` (previous) | El Worker requiere JSON para parsear mensajes. Prefijo plano no es JSON → Worker descartaba con "Mensaje no-JSON" |
+| 2026-06-07 | TerminalHibrida: copia local del buffer antes de JSON ops | Modificación directa del buffer compartido | `write()` puede llamarse desde ambos núcleos → race condition. Copiar + vaciar antes de JSON lento elimina la ventana de carrera |
+| 2026-06-07 | CSV push via WebSocket al conectar navegador | Solo fetch HTTP `/datos.csv` (previous) | El fetch HTTP por el túnel es lento (~1-2s). Push por WS llega en <300ms. Gráfica y DB se cargan al instante |
+| 2026-06-07 | DHT error debounce: 5min de silencio entre errores | Error en cada fallo (previous) | DHT11 falla intermitentemente → cada 3s salía `[DHT] Error` en la consola. Ahora solo avisa si lleva >5min sin éxito |
+| 2026-06-07 | Landing page pública en `/` | Dashboard protegido en `/` (previous) | Acceso público a landing con enlace al dashboard. Dashboard movido a `/dashboard` (protegido) |
+| 2026-06-07 | `permitirWebLog` activado inmediatamente al recibir `ws_open` | Delay de 200ms (previous) | El delay era innecesario con `__ready__` del browser. Consola aparece instantáneamente |
+| 2026-06-08 | API bloqueada desde navegador: `esNavegadorDirecto()` redirige a `/` si `Accept` contiene `text/html` | No bloquear, bloquear todas las peticiones sin distinción | Las fetch() desde JS mandan `Accept: */*` o `application/json`, mientras que navegador manda `text/html`. Permite bloquear sin romper el frontend |
+| 2026-06-08 | Config page responsive: breakpoints 900px/600px/480px | No cambios, mantener solo `zoom: 0.9` | La página era ilegible en móvil: formularios de 2 columnas, inputs estrechos, action-items desbordados. Los breakpoints solo ajustan layout, no tocan estética |
+| 2026-06-13 | snprintf + stack buffer para JSON <800 bytes en vez de ArduinoJson | ArduinoJson, String += | No hay platformio.ini ni gestor de paquetes. snprintf evita heap fragmentation |
+| 2026-06-13 | reserve() + += para JSON grande (proxy con body) | snprintf directo | Body puede ser >2KB — no cabe en stack. reserve() pre-asigna heap y evita realloc múltiples |
+| 2026-06-13 | Paginación CSV newest-first con X-Total-Lines | oldest-first, sin header | El frontend necesita totalRows para calcular páginas. Newest-first porque el usuario ve lo último primero |
+| 2026-06-13 | HMAC con payload = timestamp + method + path + body | Solo body | Protege contra replay (timestamp), método y path son parte del mensaje |
+| 2026-06-13 | Módulos con struct de punteros a función en vez de FSM integer | Enum + switch | Agregar/eliminar módulos sin tocar taskCore1 — solo añadir const Modulo |
+| 2026-06-13 | CSV WebSocket limitado a últimas 500 líneas | Envío completo | El archivo completo (>8MB) no cabe en un mensaje WebSocket. 500 líneas es suficiente para gráfica y tabla |
+| 2026-06-13 | web_pages.cpp partido en pages/page_*.h en vez de LittleFS | Migrar a LittleFS | No requiere cambiar el sistema de archivos ni el setup. Solo incluir archivos. Mantiene PROGMEM |
+| 2026-06-08 | Contexto Blasco AI unificado: .readmeAI + GitHub README en único PROGMEM string servido en `/.readmeAI` | JS separado con fetch + elemento HTML embebido (anterior) | El endpoint `/.readmeAI` no existía → el fetch fallaba y el AI nunca recibía contexto. Al unificar en un solo PROGMEM string se elimina la duplicación y se simplifica el JS. El elemento `blasco-readme` se conserva intacto. |
 
 ---
 
@@ -663,25 +771,50 @@ None.
 | ID | Status | Description | Workaround | Root cause |
 |----|--------|-------------|-----------|------------|
 | TEL-001 | `fixed` | ✅ Telnet authentication fixed: now uses webPass (same as web) instead of hardcoded TELNET_PASSWORD. 5min inactivity timeout implemented. | — | Auth was implemented but used hardcoded password |
-| DHT-001 | `open` | 🟡 DHT11 may fail intermittently on ESP32-S3 at 240MHz: `noInterrupts()` during bit-banging can cause WiFi packet loss if the sensor response is slow. Error message `[DHT] Error: Composite read failed` appears when composite read fails after retry. | Retry logic added (1 after 1s). If persistent, add external 4.7kΩ pull-up on DATA line or switch to Adafruit DHT library | Timing sensitivity of native 1-Wire on high-frequency ESP32-S3 with WiFi active. inicializarDHT() moved to Core 1 to avoid blocking network. delay() replaced with vTaskDelay. |
+| DHT-001 | `open` | 🟡 DHT11 may fail intermittently on ESP32-S3 at 240MHz: `noInterrupts()` during bit-banging can cause WiFi packet loss if the sensor response is slow. Error message `[DHT] Error: Composite read failed` appears when composite read fails after retry. | Retry logic added (1 after 1s). If persistent, add external 4.7kΩ pull-up on DATA line or switch to Adafruit DHT library | Timing sensitivity of native 1-Wire on high-frequency ESP32-S3 with WiFi active. Moved to independent `taskDHT` (Core 1, prio 0) so it doesn't block the main loop. delay() replaced with vTaskDelay. |
 | NFC-001 | `open` | 🟡 Blocking NFC polling: modoLecturaNFC and modoEscrituraNFC block Core 1 for 2-3s (anti-bounce). | None | SPI operations are inherently blocking; move to non-blocking FSM |
 | BCK-004 | `fixed` | ✅ DELETE `/api/backups/delete?folder=...` returns 500. | — | — |
 | BCK-005 | `fixed` | ✅ POST `/api/backups/create` | — | — |
+| SEC-003 | `fixed` | ✅ Sistema de seguridad en /config: `initWebSocket()` no enviaba `__ready__`, `security_alert` no comprobaba `d.habilitado`, `seguridadRefreshStatus()` con error toast en vez de catch silencioso, `seguridadRenderStatus()` sin null-safety en `btnText`/`querySelector('i')`, faltaba toast de alerta en carga de página. | Ninguno — corregido en web_pages.cpp | 5 bugs encadenados que impedían el funcionamiento correcto del panel de seguridad en /config |
+| CSV-003 | `open` | 🟡 CSV cronjob edge case at midnight: if ESP32 reboots at HH:MM between 00:01-00:59, `ultimaHoraGuardada` resets to -1 but NTP hour is 0, so no save happens until 02:00. | None — data logger hobbyist use, not critical | Boot-time `ultimaHoraGuardada = -1` doesn't account for NTP hour == 0 edge case |
 
 ### Tech debt
 - ~30 global variables in config.h/cpp — refactor into namespaced modules or singleton classes.
 - Menu refresh uses `millis()` rollover-unsafe comparison — should handle `millis()` overflow.
-- No watchdog timer configured — a hard freeze requires manual reset.
 - NFC read/write blocks Core 1 — move to Core 0 or implement non-blocking SPI with state machine.
-- No input validation on file API paths — sanitize with `basename()` + reject path traversal (`..`).
-- No TLS/SSL on web server — all traffic in plaintext. Add ESPmbedTLS for HTTPS.
 - I2C mutex used but `Wire.begin()` called twice — guard with a flag.
+- `web_pages.cpp` reducido de 3353 a ~30 líneas con split en pages/ — aún se puede migrar a LittleFS.
 
 ---
 
 ## ✅ PROGRESS
 
 ### Completed
+- `[x]` 2026-06-13 — MEJ-001: Watchdog LittleFS — esp_task_wdt_reset() antes/después de file.print() y guardarLineaSD() en utils.cpp
+- `[x]` 2026-06-13 — MEJ-002: JSON concatenación → snprintf/reserve en tareas.cpp (proxy, response_start/end, security_alert) y web_server.cpp
+- `[x] 2026-06-13 — MEJ-003: CSV paginación — GET /api/csv?page=N&size=M con X-Total-Lines, newest-first, máx 500 filas en web_server.cpp
+- `[x]` 2026-06-13 — MEJ-004: Frontend paginación — cargarBaseDatos() → cargarPagina(), sin caché allDataRows[] en page_db.h
+- `[x]` 2026-06-13 — MEJ-005: HTTPS scaffolding — certs.h con EC-256 reales, #ifdef HTTPS_ENABLED, ServerType typedef, setServerKeyAndCert() en main.ino
+- `[x]` 2026-06-13 — MEJ-006: Cloudflare Tunnel HMAC — hmacSha256() mbedTLS, verificación en proxy tareas.cpp, firma HMAC en worker.js
+- `[x]` 2026-06-13 — MEJ-007: Module registry — modules.h con Modulo struct, dispatch por bucle en taskCore1, cada sensor expone const Modulo
+- `[x]` 2026-06-13 — MEJ-008: Hardware error recovery — fallosNFC/DHT/Ultrasonidos con auto-reinicio tras umbral (3 fallos, cooldown 30s)
+- `[x]` 2026-06-13 — MEJ-009: Tests — test/test_utils.cpp con Unity Test framework (HMAC-SHA256, CSV snprintf)
+- `[x]` 2026-06-13 — MEJ-010: Split web_pages.cpp — 6 pages/page_*.h extraídas, web_pages.cpp solo incluye
+- `[x]` 2026-06-13 — Bugfix: llave } huérfana eliminada de web_server.cpp (línea 165)
+- `[x]` 2026-06-13 — Bugfix: certs.h actualizado con certificados EC-256 reales generados con OpenSSL
+- `[x]` 2026-06-13 — Bugfix: CSV WebSocket lectura limitada a últimas 500 líneas (web_server.cpp + tareas.cpp)
+- `[x]` 2026-06-13 — Bugfix: LOG_W añadido en config.h, orden de static vars en ultrasonidos.cpp, precedencia operator+ en tareas.cpp HMAC payload
+- `[x]` 2026-06-11 — SEC-003: Sistema de seguridad completo con niveles de prioridad (1=info, 2=warning, 3=critical) + medidas activas. Config.h/cpp: seguridadNivel, seguridadMedidas, SEG_WARN_* thresholds. tareas.cpp: detección CRITICAL→WARNING por parámetro, broadcast con nivel+medidas. web_server.cpp: WS connect push y API con nivel+medidas. Frontend: toasts con prefijo de prioridad y color (CRITICAL=red, WARNING/INFO=orange). Config page: panel muestra lista de medidas con dot coloreado.
+- `[x]` 2026-06-11 — Dashboard fix: reemplazado `requestIdleCallback(initAIPanel, 200)` por `setTimeout(initAIPanel, 200)` — crasheaba todo el load handler.
+- `[x]` 2026-06-11 — Login page fix: lucide fallback + try-catch + fetch /api/security/status en carga.
+- `[x]` 2026-06-11 — SEG_WARN_WIFI_MIN: -70 → -80 dBm (config.h:245).
+- `[x]` 2026-06-11 — /db: eliminados handlers security_alert y security_ok (web_pages.cpp WS handler).
+- `[x]` 2026-06-11 — /config: toast CSS unificado con /dashboard (font-size, weight, gap, border-radius, min-width, max-width, box-shadow, transición).
+- `[x]` 2026-06-11 — Login page: eliminados WS security_alert/security_ok handler y fetch de /api/security/status en carga.
+- `[x]` 2026-06-11 — /config: toast() null-check + try-catch en lucide.createIcons(). seguridadRenderStatus null safety en rama normal. tareas.cpp tunnel API: añadidos nivel y medidas a /api/security/status.
+- `[x]` 2026-06-11 — .readmeAI actualizado con todos los cambios de la sesión.
+- `[x]` 2026-05-31 — AI-012: Gemini API key saved on ESP32 NVS (namespace `aikey`) instead of browser localStorage. New `guardarClaveAI`/`cargarClaveAI` NVS functions. New `/api/ai/key` GET+POST endpoints. JS uses `aiKey` global variable fetched from server.
+- `[x]` 2026-05-31 — AI-011: Send button hidden (`display:none`) while AI generates. Guard to prevent double-sending.
 - `[x]` 2026-05-31 — NFC-002: Full 64-block NFC dump (16 sectors × 4) in modoLecturaNFC + full clone in modoEscrituraNFC. Buffer dumpTarjeta[1024]. Key initialized to 0xFF.
 - `[x]` 2026-05-31 — CSV-002: Robust CSV cronjob: tm_min==0 window (full minute), anti-duplicate with ultimaHoraGuardada, boot save with primerGuardado.
 - `[x]` 2026-05-31 — SEC-002: OTA with webPass password + protection when empty.
@@ -690,6 +823,9 @@ None.
 - `[x]` 2026-05-31 — MAIN-007: vTaskDelay(1) → vTaskDelay(10/portTICK) on Core 0.
 - `[x]` 2026-05-31 — WEB-004: /api/system/info and /api/config/info endpoints migrated to StaticJsonDocument.
 - `[x]` 2026-05-31 — MAIN-008: SPI.begin() ordering before new MFRC522 in setup().
+- `[x]` 2026-06-08 — AI-013: Contexto Blasco AI unificado — readmeai_content.h/cpp con .readmeAI + GitHub README + pcb_context combinados. Route `/.readmeAI` sirve PROGMEM string. JS simplificado con fetch await. ⚠️ Añadida advertencia de sync en AI PROTOCOL y STRUCTURE MAP.
+- `[x]` 2026-06-08 — WEB-005: API bloqueada desde navegador — `esNavegadorDirecto()` redirige a `/` si Accept contiene `text/html`.
+- `[x]` 2026-06-08 — UI-006: Config page responsive móvil (breakpoints 900px/600px/480px) sin alterar estética.
 - `[x]` 2026-05-30 — MAIN-006: .readmeAI fully updated with real project state.
 - `[x]` 2026-05-30 — UI-004: Removed redundant settings icon from /config navigation.
 - `[x]` 2026-05-30 — DHT-002: DHT11 improved with auto-retry (1 retry after 1s) and extended timeouts.
@@ -697,6 +833,21 @@ None.
 - `[x]` 2026-05-30 — MAIN-001: FreeRTOS task stack size increased from 8KB to 16KB (silent time bomb fixed).
 - `[x]` 2026-05-30 — MAIN-002: Removed ~300 `[cite: N]` annotations from all .cpp/.h/.ino files.
 - `[x]` 2026-05-30 — MAIN-003: CSV cronjob migrated from millis() to NTP time (survives resets, saves on even hour).
+- `[x]` 2026-05-31 — VOL-001: Added `volatile` to cross-core globals (programaActivo, midiendoDistancia, temperaturaActual, humedadActual, telnetAutenticado, telnetIntentos, tiempoUltimaActividadTelnet) to prevent stale register caching on SMP ESP32-S3.
+- `[x]` 2026-05-31 — SEC-003: Added path traversal sanitization (`..` rejection) to `/datos.csv`, `/delete-db`, and `/import-csv` endpoints.
+- `[x]` 2026-05-31 — DHT-004: Moved `actualizarDHT()` to independent FreeRTOS task (`taskDHT`, 4KB stack, priority 0 on Core 1) so `noInterrupts()` no longer blocks the main Core 1 loop.
+- `[x]` 2026-05-31 — SON-002: Added `vTaskDelay(10/portTICK)` inside ultrasonic measurement path to avoid busy-polling Core 1 when `midiendoDistancia == true`.
+- `[x]` 2026-05-31 — AI-006: Arrow key navigation for sent message history in AI chat textarea.
+- `[x]` 2026-05-31 — AI-007: Copy-to-clipboard button on bot messages (clipboard API + execCommand fallback, checkmark feedback).
+- `[x]` 2026-05-31 — AI-005: File attachments in AI chat (images → base64 inline_data, text files → plain text, sender allowed with empty text).
+- `[x]` 2026-05-31 — AI-001: Blasco AI chat panel sidebar (440px, fixed right, slide-in, Gemini API streaming SSE).
+- `[x]` 2026-05-31 — AI-002: Panel height: `top:0; bottom:0` instead of `height:100vh` for zoom compatibility.
+- `[x]` 2026-05-31 — AI-003: Modernized chat UI (bubble layout, animations) then reverted to original design on user request.
+- `[x]` 2026-05-31 — AI-004: File attachment UI (paperclip button, file chips, remove, preview).
+- `[x]` 2026-05-31 — CFG-002: Config page block reorder: Blasco AI before Acciones del Sistema.
+- `[x]` 2026-05-31 — AI-010: Removed embedded #blasco-readmeai — context fetched from `/.readmeAI` on server.
+- `[x]` 2026-05-31 — WS-004: Status badge shows "RECONECTANDO..." instead of "OFFLINE" on WebSocket close.
+- `[x]` 2026-05-31 — UI-005: Telemetry bar contrast fixed (text #000, label opacity 0.65).
 - `[ ]` ~~MAIN-004: Added Watchdog (esp_task_wdt) on both FreeRTOS cores.~~ **REVERTED** — interferes with Arduino core's internal WDT and caused heap corruption.
 - `[x]` 2026-05-30 — MAIN-005: Added LOG_I/LOG_E macros for structured logging.
 - `[x]` 2026-05-30 — WEB-003: Fixed buffer overflow `data[len] = 0` in onWsEvent that corrupted heap.
@@ -723,7 +874,6 @@ None.
 - Nothing currently in progress.
 
 ### Backlog
-- `[ ]` **SEC-001**: Add HTTPS (ESPmbedTLS)
 - `[ ]` **NFC-001**: Implement non-blocking NFC polling
 - `[ ]` ~~WDT-001: Add watchdog timer (ESP32 hardware watchdog)~~ ❌ REVERTED
 - `[ ]` DET-001: Auto-detection of modules at boot
@@ -825,6 +975,27 @@ Option:     →    SD Card (SPI): CS=41, CLK=40, MOSI=11, MISO=13 (#ifdef SD_CS_
 
 _AI: Start writing below. Newest entries first._
 
+2026-06-13 — 10 mejoras implementadas. Observaciones clave:
+- snprintf + stack buffer (800 bytes) funciona para JSON pequeños como security_alert. Para proxy con body grande (>2KB) se usa reserve() + += porque no cabe en stack.
+- HMAC-SHA256 con mbedTLS: `mbedtls_md_hmac_starts()` necesita el key como byte array, no como String. Usar `(const unsigned char*)key.c_str()`.
+- El operador `+` de String + String + String se evalúa izquierda-a-derecha. Si el primer `+` devuelve String temporal, el segundo `+` funciona. Pero si hay mezcla de String + char* + int, poner paréntesis o String() explícito.
+- La paginación newest-first requiere leer el archivo completo para contar líneas (fseek + readUntil), luego saltar N líneas. Para archivos grandes (>8MB) esto es lento pero inevitable sin índice.
+- Los certificados EC-256 generados con OpenSSL deben estar en formato PEM. ESP32 con ESPmbedTLS acepta PEM directamente. El key debe ser PKCS#8 (BEGIN PRIVATE KEY), no SEC1 (BEGIN EC PRIVATE KEY).
+- Al dividir web_pages.cpp en pages/*.h, las cadenas raw-string (R"()") no se pueden dividir entre archivos. Cada página queda en su propio .h con su propio raw-string.
+- La codificación UTF-8 de los archivos .h extraídos se corrompió por PowerShell (Set-Content con encoding por defecto). Forzar -Encoding UTF8.
+
+2026-06-08 — Blasco AI context unificado: readmeai_content.h/cpp contiene el .readmeAI completo + GitHub README como PROGMEM string (~1000 líneas). El endpoint `/.readmeAI` lo sirve con `send_P()`. El JS del dashboard ahora hace `await fetch('/.readmeAI')` para que el contexto esté disponible desde el primer mensaje (antes era fire-and-forget y no llegaba a incluirse). El elemento `blasco-readme` en HTML se conserva intacto para compatibilidad, pero el JS ya no lo referencia.
+
+2026-05-31 — Blasco AI API key is now stored in ESP32 NVS (namespace `aikey`), not in localStorage. The key is fetched from `/api/ai/key` on page load (`aiCfgInit`) and cached in the global `aiKey` variable. Before sending a message, `aiSend()` checks `aiKey` and fetches it from the server if empty. This means the API key persists across browser changes and survives cache clears. The model preference (`blasco_ai_model`) is still stored in localStorage as it's not sensitive. The send button is now hidden (`display: none`) while generating and shown again when done — the `disabled` property is no longer used for the send button.
+
+2026-05-31 — Blasco AI panel: Gemini API key is stored in localStorage, never sent to ESP32. This means the ESP32 itself has zero AI functionality — it's pure browser-side. The system prompt is built client-side with live telemetry data from the WebSocket, README context from the embedded `<script type="text/plain">` element, and .readmeAI fetched from `/.readmeAI` on the ESP32. When the embedded `#blasco-readmeai` element doesn't exist, the code falls back to a fetch + cache pattern.
+
+2026-05-31 — Copy button on bot messages: lucide's `createIcons()` replaces `<i data-lucide="copy">` with an `<svg>` element. After that, `querySelector('i')` returns null. To change the icon, replace the button's `innerHTML` instead of mutating the attribute. The `execCommand('copy')` fallback is required because the ESP32 dashboard is served over HTTP (not HTTPS), so `navigator.clipboard` is not always available.
+
+2026-05-31 — Panel height: `height: 100vh` with `body { zoom: 0.9 }` can cause miscalculations in some browsers. Using `top: 0; bottom: 0` on a `position: fixed` element is more reliable — it always fills the viewport regardless of zoom.
+
+2026-05-31 — Never send empty strings (`''`) through WebSocket as a keepalive heartbeat. The ESP32's command parser may interpret the empty message as a command and crash or reset counters. If a keepalive is needed, send a specific harmless string like `"ping"` — but even better, just let `onClose` reconnect cleanly.
+
 2026-05-30 — DHT11 native 1-Wire on ESP32-S3: `noInterrupts()` during ~5ms can cause WiFi packet loss if the DHT11 is slow to respond. Timeouts must be generous (300µs first pulse, 120µs subsequent, 80µs bits). The retry (1 after 1s) is essential because the DHT11 can fail intermittently due to bus noise. The final checksum discards corrupted data.
 
 2026-05-30 — Web UI pin mapping redesign: grouping inputs by peripheral (NFC, HC-SR04, DHT11) in individual cards is more usable than a flat grid. Each card has a Lucide icon, distinctive color (cyan/yellow/green), and current values inline in the label. Number inputs must have `-moz-appearance:textfield` to hide spinners in Firefox.
@@ -873,7 +1044,30 @@ _AI: Start writing below. Newest entries first._
 
 | Date | Actor | Summary |
 |------|-------|---------|
-| 2026-05-30 | AI | MAIN-006: .readmeAI fully updated: tree, symbols, dependencies, endpoints, constraints, current session. |
+| 2026-06-14 | AI | REFACTOR-001: Variables globales de config.h/config.cpp agrupadas en 7 structs: `SesionWeb` (token/inicio), `SistemaWeb` (listo/permitirLog/forzarTelemetria/pedirMenu), `Seguridad` (habilitado/modo/manual/nivel/causa/medidas), `Tunel` (cfWsClient/host/path/token/habilitado/conectado/wsCount), `Telnet` (autenticado/intentos/ultimaActividad), `Sensores` (temperatura/humedad), `NFC` (bloque0/bloqueEscaneado/bloqueManual/dump/dumpValido/modo/memoriaLlena). 364 referencias actualizadas en 9 archivos (main.ino, tareas.cpp, web_server.cpp, terminal.cpp, menus.cpp, nfc.cpp, utils.cpp, dht.cpp, dht.h). config.h reducido de ~200 líneas de externs planos a structs documentados. |
+| 2026-06-14 | AI | UI-007: Filtrar redes ocultas (SSID vacío) en `escanearRedes()` de `page_config.h`. Se añade `.filter(r => r.ssid && r.ssid.trim().length > 0)` antes del sort, con fallback "No se encontraron redes" si todas eran ocultas. |
+| 2026-06-13 | AI | MEJ-001..010: Implementadas 10 mejoras de `mejoras_esp32_blascos_os.html`. Watchdog LittleFS, JSON snprintf, paginación CSV, frontend paginación, HTTPS certs, HMAC túnel, módulos struct, recuperación errores HW, tests Unity, split pages. Bugfixes: } huérfana, certs reales, CSV 500 líneas, LOG_W, static order, operator+. .readmeAI actualizado. |
+| 2026-06-08 | AI | AI-013: Creados readmeai_content.h/cpp con contenido combinado .readmeAI + GitHub README + pcb_context como PROGMEM string. Nuevo route `server->on("/.readmeAI")`. JS simplificado: fetch await de `/.readmeAI` como única fuente de contexto. Elemento `blasco-readme` conservado intacto. ⚠️ Añadida advertencia de sync: regenerar readmeai_content.cpp si cambia .readmeAI, pcb_context.md o README. |
+| 2026-06-11 | AI | TUN-001: Corregido arranque intermitente del túnel en tareas.cpp. Flanco de reconexión WiFi (`wifiEstabaConectado`), espera 2s de estabilización TCP antes de beginSSL, reset de `tunnelBeginSslLlamado` al caer WiFi para forzar handshake limpio al reconectar. |
+| 2026-06-11 | AI | SEC-003: Sistema de seguridad corregido en /config (config_html, web_pages.cpp). 5 bugs: (1) initWebSocket sin __ready__, (2) security_alert sin check habilitado, (3) seguridadRefreshStatus con error toast en vez de catch silencioso, (4) seguridadRenderStatus sin null-safety en btnText/querySelector, (5) falta toast alerta en carga.|
+| 2026-06-08 | AI | WEB-005: Añadida función `esNavegadorDirecto()` en web_server.h/cpp. Todos los endpoints `/api/*`, `/datos.csv` y `/delete-db` redirigen a `/` si el header `Accept` contiene `text/html` (navegador directo). Fetch JS sigue funcionando normal. |
+| 2026-06-08 | AI | UI-006: Config page adaptada para móvil — breakpoints 900px/600px/480px. Form-grid 1 col, pin-groups en columna, action-items apilados, sys-grid responsive, botones full-width, inputs adaptados, usuario oculto en nav mobile. Sin cambios estéticos. |
+| 2026-05-31 | AI | AI-012: API key saved on ESP32 NVS instead of localStorage. Added `guardarClaveAI`/`cargarClaveAI` in utils.cpp, `/api/ai/key` GET+POST endpoints in web_server.cpp. Updated all JS functions to use server key. |
+| 2026-05-31 | AI | AI-011: Send button hidden while generating (`display:none` instead of `disabled`). Added `aiAbortCtrl` guard to prevent double-sending. |
+| 2026-05-31 | AI | AI-010: Removed embedded #blasco-readmeai element — .readmeAI context fetched from server `/.readmeAI` again. |
+| 2026-05-31 | AI | AI-009: Fixed copy button icon not showing checkmark (lucide `<i>`→`<svg>` replacement issue). |
+| 2026-05-31 | AI | AI-008: Added `aiCopyFallback()` using `execCommand('copy')` for HTTP environments without clipboard API. |
+| 2026-05-31 | AI | AI-007: Added copy-to-clipboard button on bot messages (hover reveal, checkmark feedback 2s). |
+| 2026-05-31 | AI | AI-006: Arrow key navigation (Up/Down) for sent message history in AI chat textarea. |
+| 2026-05-31 | AI | AI-005: File attachments: images as base64 inline_data, text files as plain text, allow sending files without text. |
+| 2026-05-31 | AI | AI-004: Reverted chat UI to original design (user requested rollback of modern bubble layout). |
+| 2026-05-31 | AI | AI-003: Modernized chat UI with right-aligned user bubbles, rounded corners, animations — then reverted. |
+| 2026-05-31 | AI | AI-002: Fixed panel height: `top:0; bottom:0` instead of `height:100vh` (zoom compatibility). |
+| 2026-05-31 | AI | AI-001: Removed WebSocket heartbeat (empty string) — interfered with ESP32 command parser, broke telemetry. |
+| 2026-05-31 | AI | WS-004: Status badge shows "RECONECTANDO..." instead of "OFFLINE" on WebSocket close. |
+| 2026-05-31 | AI | UI-005: Telemetry bar text `#fff→#000`, label opacity `0.5→0.65` for contrast. |
+| 2026-05-31 | AI | CFG-002: Config page: Blasco AI block moved before Acciones del Sistema (last block). |
+| 2026-05-31 | AI | AI-000: Blasco AI chat panel integrated — Gemini API, sidebar (440px), streaming SSE, file attachments, live telemetry + README context in system prompt. |
 | 2026-05-30 | AI | UI-004: Removed redundant settings icon from /config navigation (web_pages.cpp). |
 | 2026-05-30 | AI | DHT-002: DHT11 improved with retry (1 retry after 1s), extended timeouts (300/120/120µs), 5µs settling pause in dht.cpp. |
 | 2026-05-30 | AI | UI-003: Redesigned GPIO pin mapping in config_html (web_pages.cpp): grouped by peripheral with cards, current values inline, compact inputs. |
