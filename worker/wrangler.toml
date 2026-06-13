@@ -1,0 +1,30 @@
+name = "esp32blascoos"
+main = "worker.js"
+compatibility_date = "2026-05-31"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+
+# Durable Object para mantener el WebSocket persistente con el ESP32
+[[durable_objects.bindings]]
+name = "TUNNEL_SESSION"
+class_name = "TunnelSession"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TunnelSession"]
+
+# Token compartido entre el Worker y el ESP32
+# Cámbialo por uno seguro y pon el mismo en el ESP32
+[vars]
+ESP_TOKEN = "dramance1"

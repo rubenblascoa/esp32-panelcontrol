@@ -1,0 +1,1190 @@
+// =============================================================================
+// ZenithMC Cloudflare Worker — Túnel ESP32 Relay v2.0
+// =============================================================================
+// Arquitectura:
+//   Navegador ──HTTPS──▶ Worker ──WS interno──▶ Durable Object ──WSS──▶ ESP32
+//
+// Optimizaciones v2.0:
+//   · Caché de páginas HTML en DO storage (login, dashboard, db, config)
+//   · Timeout agresivo de 8s con fallback a caché antes de mostrar offline
+//   · Peticiones concurrentes en vuelo (sin cola serializada)
+//   · Headers prefiltrados para reducir payload al ESP32
+//   · Respuesta de deadline rediseñada con auto-retry inteligente
+//   · Cola de warmup: cuando el ESP32 reconecta, precarga las páginas cacheables
+//
+// Deploy: wrangler deploy
+// Variables de entorno (wrangler.toml o Dashboard):
+//   ESP_TOKEN         — token secreto que el ESP32 envía al autenticarse
+//   REQUEST_TIMEOUT   — timeout en ms para peticiones al ESP32 (default: 8000)
+//   MAX_BODY_SIZE     — tamaño máximo del body en bytes (default: 1048576)
+//   CACHE_TTL_SEC     — TTL de caché de páginas en segundos (default: 300)
+// =============================================================================
+
+// Rutas cuyo HTML se cachea en el DO para servir mientras el ESP32 no responde
+// o para acelerar la primera carga (sirve caché + revalida en segundo plano)
+const CACHEABLE_PATHS = new Set(['/', '/db', '/config', '/login-page']);
+
+// Cabeceras del navegador que el ESP32 no necesita ver
+const HEADERS_TO_STRIP = new Set([
+  'host', 'cf-ray', 'cf-connecting-ip', 'x-forwarded-for',
+  'x-real-ip', 'accept-encoding', 'cf-visitor', 'cf-ipcountry',
+  'cdn-loop', 'cf-ew-via', 'x-forwarded-proto'
+]);
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const id   = env.TUNNEL_SESSION.idFromName('esp32-singleton');
+    const stub = env.TUNNEL_SESSION.get(id);
+    return stub.fetch(request);
+  }
+};
+
+// =============================================================================
+// Durable Object: TunnelSession
+// =============================================================================
+export class TunnelSession {
+  constructor(state, env) {
+    this.state    = state;
+    this.env      = env;
+    this.esp      = null;
+    this.authed   = false;
+    this.browsers = new Set();
+    this.pending   = new Map();       // id → { resolve, reject, timer }
+    this.pageCache = new Map();       // path → { html, ts }
+    this.chunks    = new Map();       // id → { status, headers, parts[], timer }
+    this.telnetWs  = null;            // WebSocket del cliente telnet activo (uno a la vez)
+    // Restaurar caché desde DO Storage antes de aceptar cualquier request.
+    // blockConcurrencyWhile serializa el init: ningún fetch() corre hasta que
+    // el await resuelve, eliminando el await extra por request que había antes.
+    this.state.blockConcurrencyWhile(() => this._loadCacheFromStorage());
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    // ── ESP32 se conecta por WebSocket ──────────────────────────────────────
+    // IMPORTANTE: NO hacer await antes de este bloque — el upgrade WebSocket
+    // debe procesarse sin latencia adicional o el handshake falla.
+    if (url.pathname === '/esp-tunnel') {
+      if (request.headers.get('Upgrade') !== 'websocket') {
+        return new Response('Se requiere WebSocket', { status: 426 });
+      }
+      const { 0: client, 1: server } = new WebSocketPair();
+      this._attachESP(server);
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    // ── Cliente Telnet conecta por WebSocket (/telnet) ──────────────────────
+    if (url.pathname === '/telnet' && request.headers.get('Upgrade') === 'websocket') {
+      const { 0: client, 1: server } = new WebSocketPair();
+      this._attachTelnet(server);
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    // ── Navegador conecta por WebSocket (telemetría) ─────────────────────────
+    if (request.headers.get('Upgrade') === 'websocket') {
+      const { 0: client, 1: server } = new WebSocketPair();
+      this._attachBrowser(server);
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    // ── Tráfico HTTP del navegador ───────────────────────────────────────────
+    // La caché ya está restaurada desde el constructor (blockConcurrencyWhile),
+    // no es necesario llamar _loadCacheFromStorage() aquí.
+
+    // Redirigir subpáginas desconocidas a /
+    const knownPaths = ['/', '/dashboard', '/config', '/db', '/login-page', '/login', '/logout', '/datos.csv', '/delete-db', '/setup', '/import-csv', '/api/system/info', '/api/config/info', '/api/config/webcred', '/api/config/pins', '/api/wifi/reboot', '/api/wifi/scan', '/api/wifi/configure', '/api/wifi/status', '/api/wifi/reset', '/api/ai/key'];
+    if (!knownPaths.includes(url.pathname) && !url.pathname.startsWith('/api/')) {
+      return Response.redirect(request.url.replace(url.pathname, '/'), 302);
+    }
+
+    return this._proxyToESP(request, url);
+  }
+
+  // ── WebSocket del ESP32 ────────────────────────────────────────────────────
+  _attachESP(ws) {
+    console.log('[TUNNEL] _attachESP llamado — this.esp era', this.esp ? 'válido' : 'null', 'authed era', this.authed);
+    if (this.esp) {
+      try { this.esp.close(1001, 'nueva sesion'); } catch (_) {}
+      this._rejectAll('ESP32 reconectado — sesión anterior cerrada');
+    }
+
+    this.esp    = ws;
+    this.authed = false;
+    ws.accept();
+    console.log('[TUNNEL] _attachESP completado — esperando auth...');
+
+    ws.addEventListener('message', (evt) => {
+      let msg;
+      try { msg = JSON.parse(evt.data); } catch (_) {
+        console.log('[TUNNEL] Mensaje no-JSON recibido:', evt.data.substring(0, 100));
+        return;
+      }
+
+      // 1. Autenticación
+      if (msg.type === 'auth') {
+        const token = this.env.ESP_TOKEN || '';
+        if (!token || msg.token === token) {
+          this.authed = true;
+          ws.send(JSON.stringify({ type: 'auth_ok' }));
+          console.log('[TUNNEL] ESP32 autenticado');
+          // [FIX-TUN-5] Notificar al ESP32 cuántos browsers hay actualmente.
+          // Si el DO no se reinició, puede haber browsers esperando — mandamos
+          // ws_open por cada uno para que el ESP32 reconstruya su tunnelWsCount.
+          for (let i = 0; i < this.browsers.size; i++) {
+            ws.send(JSON.stringify({ type: 'ws_open' }));
+          }
+          // Iniciar heartbeat para detectar ESP32 zombi (socket abierto, no responde)
+          this._startHeartbeat();
+          // Precalentar caché de páginas principales en segundo plano
+          this._warmupCache();
+        } else {
+          ws.send(JSON.stringify({ type: 'auth_fail' }));
+          ws.close(1008, 'token invalido');
+          console.warn('[TUNNEL] ESP32 token incorrecto');
+        }
+        return;
+      }
+
+      // 2. Respuesta HTTP del ESP32 (completa, camino rápido)
+      if (msg.type === 'response' && msg.id) {
+        const p = this.pending.get(msg.id);
+        if (p) {
+          clearTimeout(p.timer);
+          this.pending.delete(msg.id);
+          p.resolve(msg);
+        }
+        return;
+      }
+
+      // 2b. Respuesta chunked — inicio: recibir status + headers
+      if (msg.type === 'response_start' && msg.id) {
+        const timeout = parseInt(this.env.REQUEST_TIMEOUT) || 8000;
+        const chunkTimer = setTimeout(() => {
+          const c = this.chunks.get(msg.id);
+          if (c) {
+            this.chunks.delete(msg.id);
+            const p = this.pending.get(msg.id);
+            if (p) { clearTimeout(p.timer); this.pending.delete(msg.id); p.resolve(null); }
+          }
+        }, timeout);
+        this.chunks.set(msg.id, {
+          status:  msg.status  || 200,
+          headers: msg.headers || {},
+          parts:   [],
+          size:    msg.size    || 0,
+          timer:   chunkTimer
+        });
+        return;
+      }
+
+      // 2c. Respuesta chunked — trozo de body en base64
+      if (msg.type === 'response_chunk' && msg.id) {
+        const c = this.chunks.get(msg.id);
+        if (c && msg.data) c.parts.push(msg.data);
+        return;
+      }
+
+      // 2d. Respuesta chunked — fin: ensamblar y resolver
+      if (msg.type === 'response_end' && msg.id) {
+        const c = this.chunks.get(msg.id);
+        if (!c) return;
+        clearTimeout(c.timer);
+        this.chunks.delete(msg.id);
+
+        // Decodificar chunks base64 → Uint8Array → UTF-8 string
+        // NO usar atob().join() — atob devuelve Latin-1 binario y los caracteres
+        // UTF-8 multibyte (tildes, •, ©, etc.) quedan corruptos al concatenar strings
+        const totalBytes = c.parts.reduce((sum, b64) => sum + Math.floor(b64.replace(/=/g,'').length * 3 / 4), 0);
+        const merged = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const b64 of c.parts) {
+          const bin = atob(b64);
+          for (let i = 0; i < bin.length; i++) merged[offset++] = bin.charCodeAt(i);
+        }
+        const fullBody = new TextDecoder('utf-8').decode(merged.slice(0, offset));
+
+        const assembled = {
+          status:  c.status,
+          headers: c.headers,
+          body:    fullBody
+        };
+
+        const p = this.pending.get(msg.id);
+        if (p) {
+          clearTimeout(p.timer);
+          this.pending.delete(msg.id);
+          p.resolve(assembled);
+        }
+        return;
+      }
+
+      // 3. Telemetría para navegadores
+      if (msg.type === 'ws_fwd' && msg.data !== undefined) {
+        // data puede ser string (path anterior) u objeto JSON (path nuevo)
+        const data = typeof msg.data === 'string' ? msg.data : JSON.stringify(msg.data);
+        for (const browser of this.browsers) {
+          try { browser.send(data); } catch (_) {}
+        }
+        return;
+      }
+
+      // 4. Datos Telnet del ESP32 → reenviar al cliente Telnet
+      if (msg.type === 'telnet_fwd' && msg.data !== undefined) {
+        if (this.telnetWs) {
+          try { this.telnetWs.send(String(msg.data)); } catch (_) {}
+        }
+        return;
+      }
+    });
+
+    ws.addEventListener('close', () => {
+      this.esp    = null;
+      this.authed = false;
+      this._stopHeartbeat();
+      this._rejectAll('ESP32 desconectado');
+      console.log('[TUNNEL] ESP32 desconectado');
+    });
+
+    ws.addEventListener('error', () => {
+      this.esp    = null;
+      this.authed = false;
+      this._stopHeartbeat();
+      this._rejectAll('Error WebSocket ESP32');
+    });
+  }
+
+  // ── WebSocket del navegador ────────────────────────────────────────────────
+  _attachBrowser(ws) {
+    ws.accept();
+    this.browsers.add(ws);
+    console.log('[BROWSER] Navegador conectado vía WebSocket');
+
+    if (this.esp && this.authed) {
+      this.esp.send(JSON.stringify({ type: 'ws_open' }));
+    }
+    // Si el ESP no está listo, el ws_open se mandará cuando se autentique (ver _attachESP)
+
+    ws.addEventListener('message', (evt) => {
+      if (this.esp && this.authed) {
+        this.esp.send(JSON.stringify({ type: 'ws_fwd', data: evt.data }));
+      }
+    });
+
+    ws.addEventListener('close', () => {
+      this.browsers.delete(ws);
+      if (this.browsers.size === 0 && this.esp && this.authed) {
+        this.esp.send(JSON.stringify({ type: 'ws_close' }));
+      }
+    });
+
+    ws.addEventListener('error', () => {
+      this.browsers.delete(ws);
+      if (this.browsers.size === 0 && this.esp && this.authed) {
+        this.esp.send(JSON.stringify({ type: 'ws_close' }));
+      }
+    });
+  }
+
+  // ── WebSocket del cliente Telnet (proxy TCP→WS) ───────────────────────────
+  _attachTelnet(ws) {
+    // Solo una sesión Telnet activa a la vez (mismo límite del ESP32)
+    if (this.telnetWs) {
+      try { this.telnetWs.close(1000, 'nueva sesion'); } catch (_) {}
+      this.telnetWs = null;
+    }
+    ws.accept();
+    this.telnetWs = ws;
+    console.log('[TELNET] Cliente Telnet conectado vía WebSocket');
+
+    // Notificar al ESP32 que hay un cliente Telnet entrante
+    if (this.esp && this.authed) {
+      this.esp.send(JSON.stringify({ type: 'telnet_open' }));
+    }
+
+    ws.addEventListener('message', (evt) => {
+      // Datos del cliente Telnet → reenviar al ESP32 como telnet_data
+      if (this.esp && this.authed) {
+        this.esp.send(JSON.stringify({ type: 'telnet_data', data: evt.data }));
+      }
+    });
+
+    const onClose = () => {
+      if (this.telnetWs === ws) {
+        this.telnetWs = null;
+        if (this.esp && this.authed) {
+          this.esp.send(JSON.stringify({ type: 'telnet_close' }));
+        }
+        console.log('[TELNET] Cliente Telnet desconectado');
+      }
+    };
+    ws.addEventListener('close', onClose);
+    ws.addEventListener('error', onClose);
+  }
+
+  // ── Proxy HTTP hacia el ESP32 ──────────────────────────────────────────────
+  async _proxyToESP(request, url) {
+    const path = url.pathname;
+
+    // Sin ESP32 conectado → intentar servir desde caché antes de mostrar offline
+    if (!this.esp || !this.authed) {
+      const cached = this._getCached(path);
+      if (cached) return this._cachedResponse(cached);
+      return this._deadlineResponse(path, 'offline');
+    }
+
+    // Leer body con límite de tamaño
+    let body = null;
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      const maxSize = parseInt(this.env.MAX_BODY_SIZE) || 1048576;
+      const contentLen = parseInt(request.headers.get('content-length') || '0');
+      if (contentLen > maxSize) {
+        return new Response('Body demasiado grande', { status: 413 });
+      }
+      body = await request.text();
+      if (body.length > maxSize) {
+        return new Response('Body demasiado grande', { status: 413 });
+      }
+    }
+
+    // Para rutas cacheables con GET: si hay caché fresca, servir inmediatamente
+    // y revalidar en segundo plano (stale-while-revalidate)
+    const isCacheable = CACHEABLE_PATHS.has(path) && request.method === 'GET';
+    const cached = isCacheable ? this._getCached(path) : null;
+    if (cached) {
+      // Disparar revalidación en segundo plano sin bloquear la respuesta
+      this._revalidateInBackground(request, url, path, body);
+      return this._cachedResponse(cached);
+    }
+
+    // Construir mensaje para el ESP32
+    const id = crypto.randomUUID();
+    const headers = this._filterHeaders(request.headers);
+
+    // Firmar el request con HMAC-SHA256 para verificación de origen en el ESP32
+    const signKey = this.env.ESP_TOKEN || '';
+    if (signKey) {
+      const timestamp = Date.now().toString();
+      const payload = timestamp + request.method + (path + url.search) + (body || '');
+      const enc = new TextEncoder();
+      const keyData = await crypto.subtle.importKey(
+        'raw', enc.encode(signKey),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false, ['sign']
+      );
+      const sigBytes = await crypto.subtle.sign('HMAC', keyData, enc.encode(payload));
+      const sigHex = [...new Uint8Array(sigBytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+      headers['x-zenith-sig'] = sigHex;
+      headers['x-zenith-time'] = timestamp;
+    }
+
+    const reqMsg = JSON.stringify({
+      type:    'request',
+      id,
+      method:  request.method,
+      path:    path + url.search,
+      headers,
+      body:    body || ''
+    });
+
+    // Esperar respuesta con timeout
+    const timeout = parseInt(this.env.REQUEST_TIMEOUT) || 8000;
+    const espResponse = await this._sendWithTimeout(id, reqMsg, timeout);
+
+    if (!espResponse) {
+      // Último recurso: caché aunque sea antigua
+      const stale = this._getCached(path, true);
+      if (stale) return this._cachedResponse(stale);
+      return this._deadlineResponse(path, 'timeout');
+    }
+
+    const response = this._buildResponse(espResponse);
+
+    // Guardar en caché si es una ruta cacheable y la respuesta es HTML 200
+    if (isCacheable && espResponse.status === 200) {
+      const ct = (espResponse.headers?.['content-type'] || '').toLowerCase();
+      if (ct.includes('text/html')) {
+        this._setCached(path, espResponse.body || '');
+      }
+    }
+
+    return response;
+  }
+
+  // ── Warmup de caché tras reconexión del ESP32 ──────────────────────────────
+  async _warmupCache() {
+    // Precargamos landing page (pública) y login-page (pública).
+    // Las rutas protegidas (/dashboard, /db, /config) requieren cookie
+    // válida y se cachean cuando el usuario las visita.
+    const paths = ['/', '/login-page'];
+    for (const path of paths) {
+      if (this._getCached(path)) continue;
+      try {
+        const id = crypto.randomUUID();
+        const msg = JSON.stringify({
+          type: 'request', id,
+          method: 'GET', path,
+          headers: { accept: 'text/html' },
+          body: ''
+        });
+        const res = await this._sendWithTimeout(id, msg, 5000);
+        if (res?.status === 200) {
+          const ct = (res.headers?.['content-type'] || '').toLowerCase();
+          if (ct.includes('text/html')) {
+            this._setCached(path, res.body || '');
+            console.log('[CACHE] Precargado:', path);
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  // Disparar revalidación sin bloquear (fire-and-forget)
+  _revalidateInBackground(request, url, path, body) {
+    const id = crypto.randomUUID();
+    const headers = this._filterHeaders(request.headers);
+    const signKey = this.env.ESP_TOKEN || '';
+    if (signKey) {
+      const timestamp = Date.now().toString();
+      const payload = timestamp + request.method + (path + url.search) + (body || '');
+      const enc = new TextEncoder();
+      crypto.subtle.importKey('raw', enc.encode(signKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+        .then(keyData => crypto.subtle.sign('HMAC', keyData, enc.encode(payload)))
+        .then(sigBytes => {
+          const sigHex = [...new Uint8Array(sigBytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+          headers['x-zenith-sig'] = sigHex;
+          headers['x-zenith-time'] = timestamp;
+        });
+    }
+    const msg = JSON.stringify({
+      type: 'request', id,
+      method: request.method,
+      path: path + url.search,
+      headers, body: body || ''
+    });
+    const timeout = parseInt(this.env.REQUEST_TIMEOUT) || 8000;
+    this._sendWithTimeout(id, msg, timeout).then((res) => {
+      if (res?.status === 200) {
+        const ct = (res.headers?.['content-type'] || '').toLowerCase();
+        if (ct.includes('text/html')) {
+          this._setCached(path, res.body || '');
+        }
+      }
+    }).catch(() => {});
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  _filterHeaders(incomingHeaders) {
+    const out = {};
+    for (const [k, v] of incomingHeaders) {
+      if (!HEADERS_TO_STRIP.has(k.toLowerCase())) out[k] = v;
+    }
+    return out;
+  }
+
+  async _sendWithTimeout(id, msg, timeout) {
+    // [FIX-TUN-3] Verificar que el ESP32 está realmente listo antes de encolar.
+    // readyState 1 = OPEN. Cualquier otro estado (CONNECTING=0, CLOSING=2, CLOSED=3)
+    // significa que el send va a fallar o el mensaje nunca llegará.
+    if (!this.esp || !this.authed || this.esp.readyState !== 1) {
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        console.warn('[TUNNEL] Timeout esperando respuesta del ESP32 para id:', id);
+        resolve(null);
+      }, timeout);
+
+      this.pending.set(id, {
+        resolve: (val) => { clearTimeout(timer); this.pending.delete(id); resolve(val); },
+        reject:  ()    => { clearTimeout(timer); this.pending.delete(id); resolve(null); },
+        timer
+      });
+
+      try {
+        this.esp.send(msg);
+      } catch (e) {
+        // [FIX-TUN-4] El send falló (WS en estado malo) — limpiar pending y marcar
+        // el ESP como desconectado para forzar reconexión limpia.
+        clearTimeout(timer);
+        this.pending.delete(id);
+        console.error('[TUNNEL] Error al hacer send al ESP32:', e.message, '— marcando como desconectado');
+        this.esp    = null;
+        this.authed = false;
+        this._rejectAll('Error de send al ESP32');
+        resolve(null);
+      }
+    });
+  }
+
+  _buildResponse(espResponse) {
+    const status     = espResponse.status  || 200;
+    const resHeaders = espResponse.headers || {};
+    const resBody    = espResponse.body    || '';
+
+    resHeaders['Access-Control-Allow-Origin'] = '*';
+
+    let responseBody;
+    if (espResponse.encoding === 'base64') {
+      const bytes = Uint8Array.from(atob(resBody), c => c.charCodeAt(0));
+      responseBody = bytes.buffer;
+    } else {
+      responseBody = resBody;
+    }
+    return new Response(responseBody, { status, headers: resHeaders });
+  }
+
+  _getCached(path, allowStale = false) {
+    const entry = this.pageCache.get(path);
+    if (!entry) return null;
+    const ttl = (parseInt(this.env.CACHE_TTL_SEC) || 3600) * 1000;
+    if (!allowStale && Date.now() - entry.ts > ttl) {
+      this.pageCache.delete(path);
+      return null;
+    }
+    return entry.html;
+  }
+
+  async _setCached(path, html) {
+    this.pageCache.set(path, { html, ts: Date.now() });
+    // Persistir en DO Storage para sobrevivir hibernaciones
+    try {
+      await this.state.storage.put('cache:' + path, JSON.stringify({ html, ts: Date.now() }));
+    } catch (_) {}
+  }
+
+  // Cargar caché persistida al inicio (llamar desde fetch() la primera vez)
+  async _loadCacheFromStorage() {
+    if (this._cacheLoaded) return;
+    this._cacheLoaded = true;
+    try {
+      const entries = await this.state.storage.list({ prefix: 'cache:' });
+      for (const [key, val] of entries) {
+        const path = key.slice(6); // quitar "cache:"
+        try {
+          const entry = JSON.parse(val);
+          if (entry && entry.html) this.pageCache.set(path, entry);
+        } catch (_) {}
+      }
+      if (this.pageCache.size > 0) console.log('[CACHE] Caché restaurada desde storage:', this.pageCache.size, 'entradas');
+    } catch (_) {}
+  }
+
+  _cachedResponse(html) {
+    return new Response(html, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html;charset=UTF-8',
+        'X-Served-By': 'zenithmc-cache'
+      }
+    });
+  }
+
+  // ── Heartbeat: detectar ESP32 zombi (socket abierto pero no responde) ─────
+  // Cada 20s manda un ping al ESP32. Si en 8s no hay pong, marca como muerto.
+  // Esto evita que _proxyToESP espere 8s por request cuando el ESP32 ya no responde.
+  _startHeartbeat() {
+    this._stopHeartbeat(); // limpiar cualquier heartbeat previo
+    this._heartbeatTimer = setInterval(() => {
+      if (!this.esp || !this.authed || this.esp.readyState !== 1) {
+        this._stopHeartbeat();
+        return;
+      }
+      // [FIX-TUN-6] Usar _sendWithTimeout como ping: si no responde en 8s, null.
+      // El ESP32 responde a cualquier request con response/response_end.
+      // Usamos un endpoint ligero (/api/tunnel/status) como ping implícito.
+      const id = 'ping-' + Date.now();
+      const msg = JSON.stringify({ type: 'request', id, method: 'GET', path: '/api/tunnel/status', headers: {}, body: '' });
+      const timer = setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id);
+          console.warn('[HEARTBEAT] ESP32 no respondió al ping — marcando como zombi');
+          this.esp    = null;
+          this.authed = false;
+          this._stopHeartbeat();
+          this._rejectAll('ESP32 no responde (heartbeat timeout)');
+        }
+      }, 8000);
+      this.pending.set(id, {
+        resolve: () => { clearTimeout(timer); this.pending.delete(id); },
+        reject:  () => { clearTimeout(timer); this.pending.delete(id); },
+        timer
+      });
+      try { this.esp.send(msg); } catch (_) { clearTimeout(timer); this.pending.delete(id); }
+    }, 20000);
+  }
+
+  _stopHeartbeat() {
+    if (this._heartbeatTimer) {
+      clearInterval(this._heartbeatTimer);
+      this._heartbeatTimer = null;
+    }
+  }
+
+  _rejectAll(reason) {
+    for (const [, p] of this.pending) {
+      clearTimeout(p.timer);
+      p.resolve(null);
+    }
+    this.pending.clear();
+    // Limpiar también chunks en vuelo
+    for (const [, c] of this.chunks) clearTimeout(c.timer);
+    this.chunks.clear();
+  }
+
+  // ── Página de deadline ─────────────────────────────────────────────────────
+  _deadlineResponse(path, reason) {
+    const isTimeout = reason === 'timeout';
+    const html = DEADLINE_PAGE(path, isTimeout);
+    return new Response(html, {
+      status: 503,
+      headers: { 'Content-Type': 'text/html;charset=UTF-8' }
+    });
+  }
+}
+
+// =============================================================================
+// Página de Deadline — ZenithMC estilo dashboard
+// =============================================================================
+function DEADLINE_PAGE(path, isTimeout) {
+  const title   = isTimeout ? 'Tiempo de espera agotado' : 'ESP32 sin conexión';
+  const subtitle = isTimeout
+    ? 'El dispositivo no respondió a tiempo. Puede estar procesando una operación pesada o tener problemas de WiFi.'
+    : 'El dispositivo no está conectado al túnel en este momento.';
+  const icon    = isTimeout ? 'TIMEOUT' : 'OFFLINE';
+  const reloadMs = 8000;
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ZenithMC — ${title}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #05070a;
+      color: #ffffff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #05070a; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 10px; border: 2px solid #05070a; }
+    ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+    /* ── Animated background ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(circle, rgba(0,212,255,0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+      animation: drift 20s linear infinite;
+    }
+    @keyframes drift {
+      0% { transform: translate(0, 0); }
+      50% { transform: translate(10px, -10px); }
+      100% { transform: translate(0, 0); }
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(ellipse at 30% 20%, rgba(0,212,255,0.03) 0%, transparent 50%),
+                  radial-gradient(ellipse at 70% 80%, rgba(255,75,75,0.02) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+      animation: ambient 30s ease-in-out infinite;
+    }
+    @keyframes ambient {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(3deg); }
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 32px;
+      height: 56px;
+      border-bottom: 1px solid rgba(31,37,48,0.6);
+      background: rgba(5,7,10,0.7);
+      backdrop-filter: blur(16px) saturate(1.2);
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: absolute;
+      left: 32px;
+    }
+    .nav-logo {
+      width: 26px;
+      height: 26px;
+      filter: invert(1);
+      transition: transform .3s ease;
+    }
+    .nav-logo:hover { transform: rotate(-8deg) scale(1.1); }
+    .nav-wordmark {
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #ffffff;
+      opacity: .85;
+    }
+    .github-icon {
+      width: 14px;
+      height: 14px;
+      background-color: currentColor;
+      -webkit-mask: url('https://icones.pro/wp-content/uploads/2021/06/icone-github-grise.png') center/contain no-repeat;
+      mask: url('https://icones.pro/wp-content/uploads/2021/06/icone-github-grise.png') center/contain no-repeat;
+    }
+    .nav-github {
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .10em;
+      text-decoration: none;
+      transition: all .25s ease;
+      position: absolute;
+      right: 32px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      opacity: .7;
+    }
+    .nav-github:hover {
+      opacity: 1;
+      color: #00d4ff;
+      border-color: rgba(0,212,255,0.15);
+      background: rgba(0,212,255,0.05);
+    }
+
+    /* ── Main ── */
+    main {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      background: radial-gradient(circle at 50% -20%, rgba(22,27,34,0.5) 0%, transparent 60%);
+    }
+    .card {
+      width: 100%;
+      max-width: 460px;
+      background: linear-gradient(145deg, rgba(13,17,23,0.9), rgba(13,17,23,0.6));
+      border: 1px solid rgba(31,37,48,0.5);
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,212,255,0.02);
+      overflow: hidden;
+      backdrop-filter: blur(20px);
+      animation: card-in .5s ease-out;
+    }
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(20px) scale(.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .card-glow {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,75,75,0.3), transparent);
+      opacity: .5;
+    }
+    .card-body {
+      padding: 38px 34px 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    /* Status chip */
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      background: rgba(255,75,75,0.06);
+      border: 1px solid rgba(255,75,75,0.15);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .60rem;
+      font-weight: 600;
+      letter-spacing: .12em;
+      color: #ff4b4b;
+      margin-bottom: 22px;
+      opacity: 0;
+      animation: fade-in .4s ease-out .3s forwards;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      background: linear-gradient(135deg, #ffffff 0%, #a0b8cc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+      line-height: 1.3;
+      opacity: 0;
+      animation: fade-in .4s ease-out .4s forwards;
+    }
+    .subtitle {
+      font-size: .85rem;
+      color: rgba(139,148,158,0.8);
+      line-height: 1.65;
+      margin-bottom: 26px;
+      max-width: 370px;
+      opacity: 0;
+      animation: fade-in .4s ease-out .5s forwards;
+    }
+    @keyframes fade-in {
+      to { opacity: 1; }
+    }
+
+    /* Info grid */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 26px;
+      width: 100%;
+      opacity: 0;
+      animation: fade-in .4s ease-out .6s forwards;
+    }
+    .info-cell {
+      background: rgba(31,37,48,0.3);
+      border: 1px solid rgba(31,37,48,0.4);
+      border-radius: 12px;
+      padding: 11px 13px;
+      text-align: left;
+      transition: border-color .2s, background .2s;
+    }
+    .info-cell:hover {
+      border-color: rgba(0,212,255,0.15);
+      background: rgba(31,37,48,0.5);
+    }
+    .info-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .55rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: rgba(139,148,158,0.6);
+      margin-bottom: 4px;
+    }
+    .info-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem;
+      color: #00d4ff;
+      word-break: break-all;
+    }
+    .info-value.warn { color: #ff4b4b; }
+
+    /* Progress bar */
+    .reload-bar-wrap {
+      margin-bottom: 26px;
+      width: 100%;
+      opacity: 0;
+      animation: fade-in .4s ease-out .7s forwards;
+    }
+    .reload-bar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 7px;
+    }
+    .reload-bar-label {
+      font-size: .68rem;
+      color: rgba(139,148,158,0.6);
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: .04em;
+    }
+    #countdown {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .68rem;
+      color: #00d4ff;
+      min-width: 24px;
+      text-align: right;
+    }
+    .reload-bar-track {
+      height: 4px;
+      background: rgba(0,212,255,0.06);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(0,212,255,0.04);
+    }
+    #progress-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #00d4ff, #00ff88);
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0,212,255,0.2), 0 0 4px rgba(0,255,136,0.3);
+      transform-origin: left;
+      transition: transform 1s linear;
+    }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      opacity: 0;
+      animation: fade-in .4s ease-out .8s forwards;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all .2s ease;
+      flex: 1;
+    }
+    .btn:active { transform: scale(.96); }
+    .btn-primary {
+      background: linear-gradient(135deg, #ffffff, #e0e8f0);
+      color: #05070a;
+      box-shadow: 0 4px 20px rgba(255,255,255,0.05);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 30px rgba(255,255,255,0.1);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: transparent;
+      color: rgba(139,148,158,0.7);
+      border: 1px solid rgba(31,37,48,0.5);
+    }
+    .btn-secondary:hover {
+      border-color: rgba(255,255,255,0.2);
+      color: #ffffff;
+      background: rgba(255,255,255,0.03);
+    }
+
+    /* ── Footer ── */
+    footer {
+      position: relative;
+      z-index: 1;
+      padding: 32px 32px;
+      border-top: 1px solid rgba(31,37,48,0.4);
+      background: rgba(13,17,23,0.5);
+      text-align: center;
+      backdrop-filter: blur(10px);
+    }
+    footer p {
+      font-size: .68rem;
+      color: rgba(139,148,158,0.5);
+    }
+    footer a {
+      color: rgba(139,148,158,0.6);
+      text-decoration: none;
+      font-weight: 600;
+      transition: color .2s;
+    }
+    footer a:hover { color: #00d4ff; }
+    footer strong {
+      color: rgba(139,148,158,0.5);
+    }
+
+    /* ── Pulse icon ── */
+    .pulse-ring {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: rgba(255,75,75,0.06);
+      border: 1px solid rgba(255,75,75,0.15);
+      margin-bottom: 18px;
+      position: relative;
+      opacity: 0;
+      animation: fade-in .4s ease-out .1s forwards;
+    }
+    .pulse-ring svg {
+      position: relative;
+      z-index: 1;
+      filter: drop-shadow(0 0 6px rgba(255,75,75,0.3));
+    }
+    .pulse-ring::before {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,75,75,0.12);
+      animation: pulse-out 2.5s ease-out infinite;
+    }
+    .pulse-ring::after {
+      content: '';
+      position: absolute;
+      inset: -14px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,75,75,0.06);
+      animation: pulse-out 2.5s ease-out infinite .8s;
+    }
+    @keyframes pulse-out {
+      0%  { transform: scale(1); opacity: .6; }
+      100%{ transform: scale(1.4); opacity: 0; }
+    }
+
+    @media (max-width: 600px) {
+      nav { padding: 0 16px; height: 52px; }
+      .nav-brand { left: 16px; }
+      .nav-github { right: 16px; }
+      .card-body { padding: 30px 18px 24px; }
+      .info-grid { grid-template-columns: 1fr; }
+      .btn-row { flex-direction: column; }
+      body::before { background-size: 30px 30px; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="nav-brand">
+      <img src="https://cdn-icons-png.flaticon.com/512/8463/8463850.png" alt="Logo" class="nav-logo">
+      <span class="nav-wordmark">ESP32 Blasco OS</span>
+    </div>
+    <a href="https://github.com/rubenblascoa/esp32-panelcontrol" target="_blank" class="nav-github">
+      <div class="github-icon"></div>
+      GITHUB
+    </a>
+  </nav>
+
+  <main>
+    <div class="card">
+      <div class="card-body">
+
+        <div class="pulse-ring">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff4b4b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            ${isTimeout
+              ? '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+              : '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>'
+            }
+          </svg>
+        </div>
+
+        <div class="status-chip">
+          <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="currentColor"/></svg>
+          ESP32 · ${icon}
+        </div>
+
+        <h1>${title}</h1>
+        <p class="subtitle">${subtitle}</p>
+
+        <div class="info-grid">
+          <div class="info-cell">
+            <div class="info-label">Ruta solicitada</div>
+            <div class="info-value">${escapeHtml(path)}</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Estado del túnel</div>
+            <div class="info-value warn">${isTimeout ? 'TIMEOUT' : 'DISCONNECTED'}</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Reintento en</div>
+            <div class="info-value"><span id="countdown">${Math.round(reloadMs / 1000)}</span>s</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Plataforma</div>
+            <div class="info-value">ESP32 Blasco OS</div>
+          </div>
+        </div>
+
+        <div class="reload-bar-wrap">
+          <div class="reload-bar-header">
+            <span class="reload-bar-label">Recargando automáticamente...</span>
+          </div>
+          <div class="reload-bar-track">
+            <div id="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <a href="${escapeHtml(path)}" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Reintentar ahora
+          </a>
+          <a href="/" class="btn btn-secondary">Inicio</a>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>&copy; 2026 ZenithMC Network &mdash; <a href="mailto:soporte@zenithmc.es">soporte@zenithmc.es</a></p>
+    <p>Desarrollado por <strong>Ruben Blasco Armengod</strong></p>
+  </footer>
+
+  <script>
+    (function() {
+      const total = ${reloadMs};
+      const fill  = document.getElementById('progress-fill');
+      const cntEl = document.getElementById('countdown');
+      const start = Date.now();
+      fill.style.transform = 'scaleX(1)';
+
+      function tick() {
+        const elapsed = Date.now() - start;
+        const remaining = Math.max(0, total - elapsed);
+        const progress = elapsed / total;
+        fill.style.transform = 'scaleX(' + (1 - progress) + ')';
+        cntEl.textContent = Math.ceil(remaining / 1000) + 's';
+        if (remaining > 0) {
+          requestAnimationFrame(tick);
+        } else {
+          location.reload();
+        }
+      }
+      requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>`;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}

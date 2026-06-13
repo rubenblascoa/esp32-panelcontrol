@@ -1,0 +1,874 @@
+﻿// MIT License
+//
+// Copyright (c) 2026 Ruben Blasco Armengod
+//
+// This file is auto-extracted from web_pages.cpp.
+#pragma once
+
+#include <Arduino.h>
+
+const char wifi_setup_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZenithMC | Configuraci&oacute;n WiFi</title>
+    <link rel="icon" href="data:,">
+    <script>
+    (function(){var w={
+    "alert-triangle":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    "sun":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
+    "moon":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+    "wifi":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>',
+    "arrow-right":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+    "info":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    "lock":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    "save":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
+    "arrow-left":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
+    "shield":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+    "refresh-cw":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+    "check":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    "external-link":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+    "rotate-ccw":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
+    "cpu":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 9h2M20 9h2M2 15h2M20 15h2M9 2v2M9 20v2"/></svg>',
+    "user":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    "smartphone":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>',
+    "thermometer":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>',
+    "github":'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>'
+    };
+    window.lucide={createIcons:function(){document.querySelectorAll('[data-lucide]').forEach(function(e){var n=e.getAttribute('data-lucide'),s=w[n];if(s){var d=document.createElement('span');d.innerHTML=s;var v=d.firstElementChild;if(e.getAttribute('style'))v.setAttribute('style',e.getAttribute('style'));if(e.getAttribute('class'))v.setAttribute('class',e.getAttribute('class'));e.parentNode.replaceChild(v,e)}})}}})();
+    </script>
+    <style>
+        :root {
+            --bg-color: #05070a;
+            --bg-gradient: radial-gradient(circle at 50% 0%, #161b22 0%, #05070a 80%);
+            --card-bg: #0d1117;
+            --border-color: #1f2530;
+            --text-main: #ffffff;
+            --text-muted: #8b949e;
+            --card-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            --accent: #00d4ff;
+            --safe: #00ff88;
+            --warn: #ffcc00;
+            --crit: #ff4b4b;
+        }
+        body.light-theme {
+            --bg-color: #f3f4f6;
+            --bg-gradient: radial-gradient(circle at 50% 0%, #ffffff 0%, #e5e7eb 100%);
+            --card-bg: #ffffff;
+            --border-color: #d1d5db;
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --card-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 10px; border: 2px solid var(--bg-color); }
+        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+        html, body { height: 100%; margin: 0; padding: 0; overflow-x: hidden; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            background-image: var(--bg-gradient);
+            background-attachment: fixed;
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            zoom: 0.9;
+            transition: background-color 0.4s, color 0.4s;
+        }
+        .back-nav {
+            position: sticky; top: 0;
+            width: 100%; padding: 30px 5% 20px 5%;
+            display: grid; grid-template-columns: 1fr auto 1fr;
+            align-items: center; z-index: 1000;
+            transition: all 0.4s ease; box-sizing: border-box;
+            background: transparent;
+        }
+        .back-nav.scrolled {
+            padding: 15px 5%;
+            background: rgba(13, 17, 23, 0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        }
+        body.light-theme .back-nav.scrolled { background: rgba(255, 255, 255, 0.85); }
+        .btn-back { justify-self: start; display: flex; align-items: center; gap: 10px; color: var(--text-main); text-decoration: none; font-weight: 700; font-size: 0.95rem; transition: 0.3s; text-transform: uppercase; opacity: 0.7; }
+        .btn-back:hover { opacity: 1; color: var(--accent); transform: translateX(-4px); }
+        body.light-theme .back-nav { background: transparent; }
+        .nav-left { justify-self: start; display: flex; align-items: center; gap: 10px; }
+        .nav-center { justify-self: center; }
+        .nav-right-wrap { justify-self: end; }
+        .theme-btn {
+            background: none; border: none;
+            color: var(--text-main); cursor: pointer;
+            display: flex; align-items: center;
+            justify-content: center; transition: 0.3s; opacity: 0.7;
+        }
+        .theme-btn:hover { color: var(--accent); opacity: 1; transform: scale(1.1) rotate(15deg); }
+        .header-badge {
+            padding: 4px 12px; border-radius: 20px;
+            font-size: 0.75rem; font-weight: 800;
+            letter-spacing: 1px; text-transform: uppercase;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: all 0.3s ease;
+        }
+        .badge-online { background: rgba(0,255,136,0.1); color: var(--safe); border: 1px solid rgba(0,255,136,0.3); }
+        .badge-online::before { content: ''; width: 8px; height: 8px; background: var(--safe); border-radius: 50%; box-shadow: 0 0 10px var(--safe); animation: pulse 2s infinite; }
+        .badge-offline { background: rgba(255,75,75,0.1); color: var(--crit); border: 1px solid rgba(255,75,75,0.3); }
+        .badge-offline::before { content: ''; width: 8px; height: 8px; background: var(--crit); border-radius: 50%; box-shadow: 0 0 5px var(--crit); }
+        .badge-connecting { background: rgba(255,204,0,0.1); color: var(--warn); border: 1px solid rgba(255,204,0,0.3); }
+        .badge-connecting::before { content: ''; width: 8px; height: 8px; background: var(--warn); border-radius: 50%; box-shadow: 0 0 10px var(--warn); animation: pulse 1s infinite; }
+        .badge-ap { background: rgba(0,255,136,0.1); color: var(--safe); border: 1px solid rgba(0,255,136,0.3); }
+        .badge-ap::before { content: ''; width: 8px; height: 8px; background: var(--safe); border-radius: 50%; box-shadow: 0 0 10px var(--safe); animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0,255,136,0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(0,255,136,0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0,255,136,0); }
+        }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .spin { animation: spin 1.2s linear infinite; }
+        .master-wrap {
+            flex: 1;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: flex-start;
+            padding-top: 4vh;
+            width: 95%; max-width: 1400px;
+            align-self: center;
+            padding-bottom: 60px;
+        }
+        .header-box { text-align: center; margin-bottom: 30px; }
+        .brand-container { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 10px 0; }
+        .brand-container h1 { font-size: 3rem; font-weight: 900; letter-spacing: -1px; margin: 0; text-transform: uppercase; }
+        .header-subtitle { color: var(--text-muted); font-size: 0.85rem; letter-spacing: 4px; text-transform: uppercase; font-weight: 600; }
+        .steps-wrap {
+            display: flex; align-items: center; justify-content: center;
+            gap: 0; margin-bottom: 35px; width: 100%; max-width: 560px;
+        }
+        .step-item {
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            flex: 1;
+        }
+        .step-circle {
+            width: 36px; height: 36px; border-radius: 50%;
+            border: 2px solid var(--border-color);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.8rem; font-weight: 900; color: var(--text-muted);
+            transition: all 0.3s;
+        }
+        .step-item.active .step-circle { border-color: var(--text-main); color: var(--text-main); box-shadow: 0 0 15px rgba(255,255,255,0.15); }
+        .step-item.done .step-circle { border-color: var(--safe); background: rgba(0,255,136,0.1); color: var(--safe); box-shadow: 0 0 10px rgba(0,255,136,0.2); }
+        .step-label { font-size: 0.65rem; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); transition: 0.3s; }
+        .step-item.active .step-label { color: var(--text-main); }
+        .step-item.done .step-label { color: var(--safe); }
+        .step-line { flex: 1; height: 2px; background: var(--border-color); transition: background 0.3s; margin-bottom: 20px; max-width: 60px; }
+        .step-line.done { background: var(--safe); }
+        .setup-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 35px;
+            padding: 50px 40px;
+            width: 100%; max-width: 420px;
+            box-shadow: var(--card-shadow);
+        }
+        .section-label {
+            font-size: 0.72rem; font-weight: 800;
+            text-transform: uppercase; letter-spacing: 1.5px;
+            color: var(--text-muted); margin-bottom: 14px;
+        }
+        .network-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; max-height: 200px; overflow-y: auto; }
+        .net-item {
+            display: flex; align-items: center; justify-content: space-between;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 14px; padding: 12px 16px;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .net-item:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); }
+        .net-item.selected { border-color: var(--text-main); background: rgba(255,255,255,0.05); box-shadow: 0 0 15px rgba(255,255,255,0.05); }
+        body.light-theme .net-item.selected { border-color: #111827; }
+        .net-left { display: flex; align-items: center; gap: 12px; }
+        .net-name { font-weight: 800; font-size: 0.9rem; }
+        .net-sec { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .signal-bars { display: flex; gap: 3px; align-items: flex-end; height: 16px; }
+        .bar { width: 4px; border-radius: 2px; background: var(--border-color); }
+        .bar.on { background: var(--safe); box-shadow: 0 0 4px var(--safe); }
+        .manual-toggle {
+            font-size: 0.75rem; font-weight: 700; color: var(--text-muted);
+            text-align: center; cursor: pointer; text-decoration: underline;
+            text-underline-offset: 3px; letter-spacing: 0.5px; transition: color 0.2s;
+            margin-bottom: 20px;
+        }
+        .manual-toggle:hover { color: var(--accent); }
+        .input-group { text-align: left; margin-bottom: 25px; position: relative; }
+        .input-group label { display: block; margin-bottom: 10px; font-weight: 800; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); padding-left: 5px; }
+        .input-group input {
+            width: 100%;
+            background: #000; border: 1px solid var(--border-color); border-radius: 12px;
+            padding: 14px 15px 14px 48px; color: #fff; font-family: inherit;
+            transition: 0.3s; box-sizing: border-box; font-size: 1rem;
+        }
+        body.light-theme .input-group input { background: #f9fafb; color: #111827; }
+        .input-group input:focus { border-color: var(--text-main); outline: none; box-shadow: 0 0 15px rgba(255,255,255,0.1); }
+        .input-group input::placeholder { color: #444; }
+        body.light-theme .input-group input::placeholder { color: #9ca3af; }
+        .btn-main {
+            width: 100%;
+            background: transparent; color: var(--text-main);
+            border: 2px solid var(--text-main);
+            padding: 16px; border-radius: 15px; font-weight: 900;
+            font-size: 1rem; cursor: pointer;
+            text-transform: uppercase; transition: 0.3s;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        .btn-main:hover { background: var(--text-main); color: #000; box-shadow: 0 0 20px rgba(255,255,255,0.3); transform: scale(1.02); }
+        .btn-main:disabled { border-color: var(--border-color); color: var(--text-muted); cursor: not-allowed; transform: none; box-shadow: none; }
+        body.light-theme .btn-main:hover { color: #fff; }
+        .btn-sec {
+            width: 100%;
+            background: transparent; color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            padding: 12px; border-radius: 12px; font-weight: 800;
+            font-size: 0.85rem; cursor: pointer; text-transform: uppercase;
+            transition: 0.3s; margin-top: 12px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-sec:hover { border-color: var(--text-muted); color: var(--text-main); background: rgba(255,255,255,0.04); }
+        .btn-crit { border-color: var(--crit); color: var(--crit); }
+        .btn-crit:hover { background: rgba(255,75,75,0.15); border-color: var(--crit); box-shadow: 0 0 15px rgba(255,75,75,0.2); color: var(--crit); }
+        .divider { border: none; border-top: 1px solid var(--border-color); margin: 22px 0; }
+        .progress-container { width: 100%; background: var(--border-color); height: 8px; border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+        .progress-bar { width: 0%; height: 100%; background: var(--text-main); box-shadow: 0 0 15px rgba(255,255,255,0.4); transition: width 0.3s ease; }
+        body.light-theme .progress-bar { box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+        .log-box {
+            background: #000;
+            border: 1px solid var(--border-color);
+            border-radius: 16px; padding: 18px 20px;
+            font-family: 'Consolas', monospace; font-size: 0.85rem;
+            color: var(--text-main); line-height: 1.8;
+            min-height: 120px; max-height: 180px;
+            overflow-y: auto; margin-bottom: 22px;
+            white-space: pre-wrap;
+        }
+        body.light-theme .log-box { background: #f9fafb; }
+        .log-ok { color: var(--safe); }
+        .log-info { color: var(--accent); }
+        .log-warn { color: var(--warn); }
+        .log-err { color: var(--crit); }
+        .screen { display: none; }
+        .screen.active { display: block; }
+        .success-icon {
+            width: 64px; height: 64px; border-radius: 50%;
+            border: 2px solid var(--safe);
+            background: rgba(0,255,136,0.08);
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px;
+            box-shadow: 0 0 20px rgba(0,255,136,0.2);
+        }
+        .success-title { font-size: 1.8rem; font-weight: 900; text-align: center; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .success-sub { color: var(--text-muted); font-size: 0.9rem; text-align: center; line-height: 1.8; margin-bottom: 25px; }
+        .ip-display {
+            background: #000; border: 1px solid var(--border-color);
+            border-radius: 12px; padding: 14px 20px;
+            font-family: 'Consolas', monospace; font-size: 1.1rem;
+            font-weight: 700; color: var(--safe); text-align: center;
+            letter-spacing: 2px; margin-bottom: 25px;
+            box-shadow: 0 0 10px rgba(0,255,136,0.1);
+        }
+        body.light-theme .ip-display { background: #f9fafb; }
+        .subsection-label {
+            font-size: 0.68rem; font-weight: 800;
+            text-transform: uppercase; letter-spacing: 1.5px;
+            color: var(--text-muted); margin: 22px 0 12px 0;
+            padding-bottom: 6px; border-bottom: 1px solid var(--border-color);
+        }
+        .input-group input[type=number]::-webkit-inner-spin-button,
+        .input-group input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .input-group input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+        .input-row {
+            display: flex; gap: 14px;
+        }
+        .input-row .input-group { flex: 1; }
+        .btn-back {
+            background: none; border: none;
+            color: var(--text-muted); cursor: pointer;
+            display: flex; align-items: center; gap: 6px;
+            font-size: 0.8rem; font-weight: 700; letter-spacing: 0.5px;
+            transition: all 0.3s; opacity: 0.7; padding: 0;
+            font-family: inherit;
+        }
+        .btn-back:hover { opacity: 1; color: var(--accent); transform: translateX(-4px); }
+        .btn-back-wrap { display: flex; justify-content: flex-start; margin-bottom: 8px; }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type="number"] { -moz-appearance: textfield; }
+        .info-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(0,255,136,0.07); border: 1px solid rgba(0,255,136,0.2);
+            border-radius: 8px; padding: 8px 14px;
+            font-size: 0.75rem; font-weight: 700; color: var(--safe);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            width: 100%; box-sizing: border-box; margin-top: 16px;
+        }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); display: none; justify-content: center; align-items: center; z-index: 9999; }
+        .modal-card { background: var(--card-bg); border: 2px solid var(--border-color); border-radius: 35px; padding: 40px; width: 90%; max-width: 420px; text-align: center; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+        .modal-card h3 { margin: 0 0 10px 0; font-size: 1.5rem; letter-spacing: 2px; font-weight: 900; }
+        .modal-card p { color: var(--text-muted); margin-bottom: 0; font-size: 0.9rem; }
+        .modal-btns { display: flex; gap: 12px; justify-content: center; margin-top: 25px; }
+        .modal-btn { padding: 12px 28px; border-radius: 12px; font-weight: 900; cursor: pointer; border: none; text-transform: uppercase; flex: 1; transition: 0.3s; font-size: 0.85rem; font-family: inherit; }
+        .github-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; }
+        .github-link:hover i { color: var(--accent) !important; }
+        .footer-zenith { width: 100%; background: var(--card-bg); padding: 40px 0; border-top: 1px solid var(--border-color); text-align: center; margin-top: auto; transition: 0.4s; }
+        .footer-zenith p { color: var(--text-muted); font-size: 0.95rem; margin: 6px 0; font-weight: 600; }
+        .footer-zenith a { color: var(--text-main); text-decoration: none; font-weight: 700; transition: 0.3s; }
+        .footer-zenith a:hover { color: var(--accent); }
+        @media (max-width: 600px) {
+            body { zoom: 1; }
+            .back-nav { padding: 15px 5%; grid-template-columns: 1fr 1fr; }
+            .nav-center { display: none; }
+            .setup-card { padding: 30px 24px; border-radius: 25px; }
+            .brand-container h1 { font-size: 2.2rem; }
+            .input-row { flex-direction: column; gap: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="modal-overlay" id="resetModal">
+    <div class="modal-card">
+        <i data-lucide="alert-triangle" style="width:50px;height:50px;color:var(--crit);margin-bottom:15px;"></i>
+        <h3>RECONFIGURAR</h3>
+        <p>Se borrar&aacute;n las credenciales guardadas en la memoria NVS y el ESP32 reiniciar&aacute; en modo AP.</p>
+        <div class="modal-btns">
+            <button class="modal-btn" style="background:var(--crit);color:#fff;" onclick="ejecutarReset()">S&Iacute;, BORRAR</button>
+            <button class="modal-btn" style="background:var(--border-color);color:var(--text-main);" onclick="cerrarModal()">CANCELAR</button>
+        </div>
+    </div>
+</div>
+
+<nav class="back-nav" id="mainNav">
+    <div class="nav-left">
+        <a href="https://github.com/rubenblascoa/esp32-panelcontrol" target="_blank" class="btn-back" style="color: var(--text-main); opacity: 0.7; display: flex; align-items: center; gap: 8px; transition: 0.3s;" onmouseover="this.style.opacity='1'; this.style.color='var(--accent)'" onmouseout="this.style.opacity='0.7'; this.style.color='var(--text-main)'">
+            <i data-lucide="github" style="width:18px;height:18px;"></i> GITHUB
+        </a>
+    </div>
+    <div class="nav-center"></div>
+    <div class="nav-right-wrap">
+        <button class="theme-btn" onclick="toggleTheme()" id="theme-btn">
+            <i data-lucide="sun"></i>
+        </button>
+    </div>
+</nav>
+
+<div class="master-wrap">
+
+    <header class="header-box">
+        <div class="header-badge badge-ap" id="statusBadge">MODO AP ACTIVO</div>
+        <div class="brand-container">
+            <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 9h2M20 9h2M2 15h2M20 15h2M9 2v2M9 20v2"/></svg>
+            <h1>ESP32 BLASCO</h1>
+        </div>
+        <p class="header-subtitle">Configuraci&oacute;n Inicial &middot; Primer Arranque</p>
+    </header>
+
+    <div class="steps-wrap" id="stepsWrap">
+        <div class="step-item active" id="step0-item"><div class="step-circle">C</div><div class="step-label">Config</div></div>
+        <div class="step-line" id="line0"></div>
+        <div class="step-item" id="step1-item"><div class="step-circle">1</div><div class="step-label">Red</div></div>
+        <div class="step-line" id="line1"></div>
+        <div class="step-item" id="step2-item"><div class="step-circle">2</div><div class="step-label">Clave</div></div>
+        <div class="step-line" id="line2"></div>
+        <div class="step-item" id="step3-item"><div class="step-circle">3</div><div class="step-label">Online</div></div>
+    </div>
+
+    <div class="setup-card">
+
+        <!-- ===== SCREEN 0: CONFIGURACIÓN HARDWARE + SEGURIDAD ===== -->
+        <div class="screen active" id="screen0">
+
+            <div class="section-label">Pines del hardware</div>
+
+            <div class="subsection-label">NFC (MFRC522)</div>
+            <div class="input-row">
+                <div class="input-group">
+                    <label>RST pin</label>
+                    <input type="number" id="nfcRst" placeholder="21" min="0" max="48">
+                    <i data-lucide="cpu" style="position:absolute;left:16px;top:50%;margin-top:14px;transform:translateY(-50%);color:var(--text-muted);width:20px;height:20px;"></i>
+                </div>
+                <div class="input-group">
+                    <label>SS pin</label>
+                    <input type="number" id="nfcSs" placeholder="5" min="0" max="48">
+                    <i data-lucide="cpu" style="position:absolute;left:16px;top:50%;margin-top:14px;transform:translateY(-50%);color:var(--text-muted);width:20px;height:20px;"></i>
+                </div>
+            </div>
+
+            <div class="subsection-label">Ultrasonidos (HC-SR04)</div>
+            <div class="input-row">
+                <div class="input-group">
+                    <label>TRIG pin</label>
+                    <input type="number" id="trigPin" placeholder="15" min="0" max="48">
+                    <i data-lucide="cpu" style="position:absolute;left:16px;top:50%;margin-top:14px;transform:translateY(-50%);color:var(--text-muted);width:20px;height:20px;"></i>
+                </div>
+                <div class="input-group">
+                    <label>ECHO pin</label>
+                    <input type="number" id="echoPin" placeholder="16" min="0" max="48">
+                    <i data-lucide="cpu" style="position:absolute;left:16px;top:50%;margin-top:14px;transform:translateY(-50%);color:var(--text-muted);width:20px;height:20px;"></i>
+                </div>
+            </div>
+
+            <div class="subsection-label">Temperatura (DHT11)</div>
+            <div class="input-group">
+                <label>DATA pin</label>
+                <input type="number" id="dhtPin" placeholder="4" min="0" max="48">
+                <i data-lucide="cpu" style="position:absolute;left:16px;top:50%;margin-top:14px;transform:translateY(-50%);color:var(--text-muted);width:20px;height:20px;"></i>
+            </div>
+
+            <hr class="divider">
+
+            <div class="section-label">Seguridad web</div>
+
+            <div class="input-group">
+                <label>Usuario</label>
+                <input type="text" id="webUser" placeholder="admin">
+                <i data-lucide="user" style="position:absolute;left:16px;top:50%;margin-top:14px;transform:translateY(-50%);color:var(--text-muted);width:20px;height:20px;"></i>
+            </div>
+
+            <div class="input-group">
+                <label>Contrase&ntilde;a</label>
+                <input type="text" id="webPass" placeholder="blasco">
+                <i data-lucide="lock" style="position:absolute;left:16px;top:50%;margin-top:14px;transform:translateY(-50%);color:var(--text-muted);width:20px;height:20px;"></i>
+            </div>
+
+            <hr class="divider">
+
+            <button class="btn-main" id="btnConfigOk" onclick="goStep1()">
+                <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+                CONTINUAR
+            </button>
+
+            <div class="info-chip">
+                <i data-lucide="info" style="width:14px;height:14px;"></i>
+                Los cambios de pines requieren reinicio. Credenciales cifradas en NVS.
+            </div>
+        </div>
+
+        <div class="screen" id="screen1">
+            <div class="section-label">Redes disponibles</div>
+            <div class="network-list" id="netList">
+                <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.85rem;font-weight:600;">No se encontraron redes WiFi. Escaneando...</div>
+            </div>
+
+            <div id="manualWrap" style="display:none;">
+                <div class="input-group">
+                    <label>SSID manual</label>
+                    <input type="text" id="manualSsid" placeholder="Nombre de la red..." oninput="onManualInput()">
+                    <i data-lucide="wifi" style="position:absolute;left:16px;top:50%;margin-top:14px;transform:translateY(-50%);color:var(--text-muted);width:20px;height:20px;"></i>
+                </div>
+            </div>
+
+            <div class="manual-toggle" id="manualToggle" onclick="toggleManual()">Introducir SSID manualmente</div>
+
+            <hr class="divider">
+            <button class="btn-main" id="btnContinuar1" onclick="goStep2()" disabled>
+                <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+                CONTINUAR
+            </button>
+            <div class="btn-back-wrap" style="margin-top:14px;">
+                <button class="btn-back" onclick="goBackToConfig()">
+                    <i data-lucide="arrow-left" style="width:16px;height:16px;"></i>
+                    VOLVER A CONFIG
+                </button>
+            </div>
+
+            <div class="info-chip">
+                <i data-lucide="info" style="width:14px;height:14px;"></i>
+                Las credenciales se cifran en NVS. Nunca en el c&oacute;digo fuente.
+            </div>
+        </div>
+
+        <div class="screen" id="screen2">
+            <div class="section-label">Red seleccionada</div>
+            <div style="background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.2);border-radius:12px;padding:12px 16px;margin-bottom:22px;display:flex;align-items:center;gap:10px;">
+                <i data-lucide="wifi" style="width:18px;height:18px;color:var(--safe);flex-shrink:0;"></i>
+                <span style="font-weight:800;font-size:0.95rem;" id="selectedSsidLabel">&mdash;</span>
+            </div>
+
+            <div class="input-group">
+                <label>Contrase&ntilde;a WiFi</label>
+                <input type="password" id="wifiPass" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" oninput="checkPass()" autocomplete="off">
+                <i data-lucide="lock" style="position:absolute;left:16px;top:50%;margin-top:14px;transform:translateY(-50%);color:var(--text-muted);width:20px;height:20px;"></i>
+            </div>
+
+            <button class="btn-main" id="btnGuardar" onclick="goStep3()" disabled>
+                <i data-lucide="save" style="width:18px;height:18px;"></i>
+                GUARDAR Y CONECTAR
+            </button>
+            <button class="btn-sec" onclick="goBack()">
+                <i data-lucide="arrow-left" style="width:16px;height:16px;"></i>
+                VOLVER
+            </button>
+
+            <hr class="divider">
+            <div class="info-chip">
+                <i data-lucide="shield" style="width:14px;height:14px;"></i>
+                Cifrado AES-256 en partici&oacute;n NVS del ESP32
+            </div>
+        </div>
+
+        <div class="screen" id="screen3">
+            <div style="text-align:center;margin-bottom:45px;">
+                <i data-lucide="refresh-cw" class="spin" style="width:45px;height:45px;color:var(--safe);margin-bottom:15px;"></i>
+                <div id="statusTextLive" style="font-weight:900;font-size:1.1rem;text-transform:uppercase;letter-spacing:1px;color:var(--safe); margin-bottom:6px;">Iniciando...</div>
+                <div style="color:var(--text-muted);font-size:0.82rem;margin-top:6px;letter-spacing:0.5px;">Por favor, mant&eacute;n el dispositivo encendido</div>
+            </div>
+            <div class="progress-container" style="margin-bottom:25px;"><div class="progress-bar" id="pbar"></div></div>
+            <div class="section-label" style="font-size:0.65rem;margin-bottom:8px;letter-spacing:1px;color:var(--text-muted);">Diagn&oacute;stico del Sistema (Mini-Log)</div>
+            <div class="log-box" id="logBox" style="min-height:80px;max-height:110px;padding:12px 16px;font-size:0.78rem;border-radius:14px;margin-bottom:0;"></div>
+        </div>
+
+        <div class="screen" id="screen4">
+            <div class="success-icon">
+                <i data-lucide="check" style="width:30px;height:30px;color:var(--safe);"></i>
+            </div>
+            <div class="success-title">&iexcl;Conectado!</div>
+            <div class="success-sub">
+                ZenithMC est&aacute; online y operativo.<br>
+                Accede al panel de control en:
+            </div>
+            <div class="ip-display" id="ipDisplay">192.168.x.x</div>
+
+            <button class="btn-main" onclick="abrirPanel()">
+                <i data-lucide="external-link" style="width:18px;height:18px;"></i>
+                ABRIR PANEL
+            </button>
+            <button class="btn-sec btn-crit" onclick="abrirModal()" style="margin-top:12px;">
+                <i data-lucide="rotate-ccw" style="width:16px;height:16px;"></i>
+                RECONFIGURAR
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<footer class="footer-zenith">
+    <p>&copy; 2026 ZenithMC Network. Todos los derechos reservados.</p>
+    <p><a href="mailto:soporte@zenithmc.es">soporte@zenithmc.es</a></p>
+</footer>
+
+<script>
+lucide.createIcons();
+
+window.addEventListener('scroll', function() {
+    var nav = document.getElementById('mainNav');
+    nav.classList.toggle('scrolled', window.scrollY > 20);
+});
+
+function toggleTheme() {
+    document.body.classList.toggle('light-theme');
+    var isLight = document.body.classList.contains('light-theme');
+    document.getElementById('theme-btn').innerHTML = isLight ? '<i data-lucide="moon"></i>' : '<i data-lucide="sun"></i>';
+    lucide.createIcons();
+}
+
+var selSsid = null;
+var manualMode = false;
+var polling = false;
+var scanInterval = null;
+var redesCache = '';
+
+function encryptionLabel(enc) {
+    if (enc == 0) return 'OPEN';
+    if (enc == 1) return 'WEP';
+    if (enc == 2) return 'WPA';
+    if (enc == 3) return 'WPA2';
+    if (enc == 4) return 'WPA/WPA2';
+    if (enc == 5) return 'WPA2-ENT';
+    if (enc == 8) return 'WPA3';
+    return 'WPA2';
+}
+
+function signalBars(rssi) {
+    if (rssi >= -50) return 4;
+    if (rssi >= -65) return 3;
+    if (rssi >= -80) return 2;
+    return 1;
+}
+
+function scanNetworks() {
+    fetch('/api/wifi/scan')
+        .then(function(res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        })
+        .then(function(data) {
+            var fresh = JSON.stringify(data);
+            if (fresh !== redesCache || data.length === 0) {
+                redesCache = fresh;
+                renderRedes(data);
+                if (selSsid) reselectNet(selSsid);
+            }
+        })
+        .catch(function() {});
+}
+
+function reselectNet(ssid) {
+    var items = document.querySelectorAll('.net-item');
+    var found = false;
+    items.forEach(function(el) {
+        var name = el.getAttribute('data-ssid');
+        if (name === ssid) { el.classList.add('selected'); found = true; }
+        else { el.classList.remove('selected'); }
+    });
+    document.getElementById('btnContinuar1').disabled = !found;
+    if (!found) selSsid = null;
+}
+
+function renderRedes(nets) {
+    var c = document.getElementById('netList');
+    if (!nets || nets.length === 0) {
+        c.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.85rem;font-weight:600;">No se encontraron redes WiFi. Escaneando...</div>';
+        return;
+    }
+    c.innerHTML = nets.map(function(n) {
+        var esOculta = !n.ssid || n.ssid.trim() === '';
+        var nombreVisible = esOculta ? '[Red oculta / Hotspot]' : n.ssid;
+        var safeSsid = esOculta ? '' : n.ssid.replace(/'/g, "\\'");
+        // Las redes ocultas abren el modo manual para escribir el SSID
+        var clickHandler = esOculta
+            ? 'onclick="selectNetOculta(this)"'
+            : 'onclick="selectNet(\'' + safeSsid + '\', this)"';
+        return '<div class="net-item' + (esOculta ? ' net-oculta' : '') + '" data-ssid="' + safeSsid + '" ' + clickHandler + '>' +
+            '<div class="net-left">' +
+            (esOculta
+                ? '<i data-lucide="smartphone" style="width:18px;height:18px;color:#f59e0b;flex-shrink:0;"></i>'
+                : '<i data-lucide="wifi" style="width:18px;height:18px;color:var(--text-muted);flex-shrink:0;"></i>') +
+            '<div>' +
+            '<div class="net-name" style="' + (esOculta ? 'color:#f59e0b;font-style:italic;' : '') + '">' + nombreVisible + '</div>' +
+            '<div class="net-sec">' + (esOculta ? 'Escribe el SSID manualmente' : encryptionLabel(n.encryption)) + '</div>' +
+            '</div></div>' +
+            '<div class="signal-bars">' +
+            [4,8,12,16].map(function(h, i) { return '<div class="bar' + (i < signalBars(n.rssi) ? ' on' : '') + '" style="height:' + h + 'px;"></div>'; }).join('') +
+            '</div></div>';
+    }).join('');
+    lucide.createIcons();
+}
+
+function selectNetOculta(el) {
+    // Al pulsar una red oculta: activa modo manual y pre-selecciona esa fila
+    document.querySelectorAll('.net-item').forEach(function(e) { e.classList.remove('selected'); });
+    el.classList.add('selected');
+    if (!manualMode) toggleManual();
+    document.getElementById('manualSsid').focus();
+}
+
+function selectNet(ssid, el) {
+    selSsid = ssid;
+    document.querySelectorAll('.net-item').forEach(function(e) { e.classList.remove('selected'); });
+    el.classList.add('selected');
+    document.getElementById('btnContinuar1').disabled = false;
+}
+
+function toggleManual() {
+    manualMode = !manualMode;
+    document.getElementById('manualWrap').style.display  = manualMode ? 'block' : 'none';
+    document.getElementById('netList').style.display     = manualMode ? 'none'  : 'flex';
+    document.getElementById('manualToggle').textContent  = manualMode ? 'Volver a la lista' : 'Introducir SSID manualmente';
+    document.getElementById('btnContinuar1').disabled    = true;
+    selSsid = null;
+    lucide.createIcons();
+}
+
+function onManualInput() {
+    var v = document.getElementById('manualSsid').value.trim();
+    selSsid = v.length >= 2 ? v : null;
+    document.getElementById('btnContinuar1').disabled = !selSsid;
+}
+
+function iniciarScanPeriodico() {
+    if (scanInterval) clearInterval(scanInterval);
+    scanNetworks(); // primer scan inmediato
+    scanInterval = setInterval(scanNetworks, 3000); // refresco cada 3s
+}
+
+function detenerScanPeriodico() {
+    if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+}
+
+function setStep(n) {
+    var screens = ['screen0','screen1','screen2','screen3','screen4'];
+    screens.forEach(function(id, i) { document.getElementById(id).classList.toggle('active', i === n); });
+    var items = ['step0-item','step1-item','step2-item','step3-item'];
+    var lines = ['line0','line1','line2'];
+    items.forEach(function(id, i) {
+        var el = document.getElementById(id);
+        el.classList.toggle('active', i === n);
+        el.classList.toggle('done', i < n);
+    });
+    lines.forEach(function(id, i) {
+        document.getElementById(id).classList.toggle('done', i < n);
+    });
+    document.getElementById('stepsWrap').style.display = n === 4 ? 'none' : 'flex';
+    if (n === 1) iniciarScanPeriodico();
+    else detenerScanPeriodico();
+}
+
+function goStep1() {
+    setStep(1);
+}
+
+function goBackToConfig() {
+    detenerScanPeriodico();
+    document.getElementById('btnContinuar1').disabled = true;
+    selSsid = null;
+    setStep(0);
+}
+
+function goStep2() {
+    if (manualMode) selSsid = document.getElementById('manualSsid').value.trim();
+    document.getElementById('selectedSsidLabel').textContent = selSsid;
+    lucide.createIcons();
+    setStep(2);
+}
+
+function goBack() {
+    document.getElementById('wifiPass').value = '';
+    document.getElementById('btnGuardar').disabled = true;
+    setStep(1);
+}
+
+function checkPass() {
+    document.getElementById('btnGuardar').disabled = document.getElementById('wifiPass').value.length < 3;
+}
+
+function addLog(logBox, cls, msg) {
+    logBox.innerHTML += '<span class="' + cls + '">' + msg + '</span>\n';
+    logBox.scrollTop = logBox.scrollHeight;
+}
+
+function goStep3() {
+    setStep(3);
+    iniciarConexion();
+}
+
+function iniciarConexion() {
+    var log = document.getElementById('logBox');
+    var bar = document.getElementById('pbar');
+    var statusTxt = document.getElementById('statusTextLive');
+    log.innerHTML = '<span class="log-info">[SISTEMA] Iniciando configuraci&oacute;n...</span>';
+    bar.style.width = '0%';
+    statusTxt.textContent = 'Enviando credenciales...';
+    var password = document.getElementById('wifiPass').value;
+
+    addLog(log, 'log-info', '[API]    Enviando credenciales al ESP32...');
+    var payload = {ssid: selSsid, password: password};
+    var cRst = parseInt(document.getElementById('nfcRst').value);
+    if (!isNaN(cRst)) payload.nfcRst = cRst;
+    var cSs = parseInt(document.getElementById('nfcSs').value);
+    if (!isNaN(cSs)) payload.nfcSs = cSs;
+    var cTrig = parseInt(document.getElementById('trigPin').value);
+    if (!isNaN(cTrig)) payload.trigPin = cTrig;
+    var cEcho = parseInt(document.getElementById('echoPin').value);
+    if (!isNaN(cEcho)) payload.echoPin = cEcho;
+    var cDht = parseInt(document.getElementById('dhtPin').value);
+    if (!isNaN(cDht)) payload.dhtPin = cDht;
+    var cUser = document.getElementById('webUser').value;
+    if (cUser) payload.webUser = cUser;
+    var cPass = document.getElementById('webPass').value;
+    if (cPass) payload.webPass = cPass;
+    fetch('/api/wifi/configure', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (data.status !== 'ok') {
+            addLog(log, 'log-err', '[ERROR]  ' + (data.message || 'Error al guardar credenciales.'));
+            statusTxt.textContent = 'Error';
+            return;
+        }
+        addLog(log, 'log-ok', '[NVS]    Credenciales guardadas en NVS.');
+        bar.style.width = '25%';
+        statusTxt.textContent = 'Conectando a la red...';
+        polling = true;
+        pollStatus(log, bar, statusTxt);
+    })
+    .catch(function() {
+        addLog(log, 'log-err', '[ERROR]  No se pudo contactar con el ESP32.');
+        statusTxt.textContent = 'Error de comunicaci\u00f3n';
+    });
+}
+
+function pollStatus(log, bar, statusTxt) {
+    if (!polling) return;
+    fetch('/api/wifi/status')
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (data.status === 'connected') {
+            polling = false;
+            bar.style.width = '100%';
+            statusTxt.textContent = 'CONECTADO';
+            addLog(log, 'log-ok', '[WiFi]   Conectado exitosamente.');
+            addLog(log, 'log-ok', '[IP]     ' + data.ip);
+            document.getElementById('ipDisplay').textContent = data.ip;
+            setStep(4);
+            lucide.createIcons();
+            addLog(log, 'log-info', '[SISTEMA] Reiniciando ESP32 en 3 segundos...');
+            setTimeout(function() {
+                fetch('/api/wifi/reboot', {method: 'POST'}).catch(function(){});
+            }, 3000);
+            return;
+        }
+        if (data.status === 'failed') {
+            polling = false;
+            statusTxt.textContent = 'Conexi\u00f3n fallida';
+            addLog(log, 'log-err', '[ERROR]  ' + (data.message || 'No se pudo conectar a la red.'));
+            return;
+        }
+        if (data.status === 'connecting') {
+            var pct = data.progress || 30;
+            bar.style.width = Math.min(pct, 90) + '%';
+            statusTxt.textContent = data.message || 'Conectando...';
+        }
+        setTimeout(function() { pollStatus(log, bar, statusTxt); }, 1000);
+    })
+    .catch(function() {
+        setTimeout(function() { pollStatus(log, bar, statusTxt); }, 1500);
+    });
+}
+
+function abrirPanel() {
+    window.location.href = '/';
+}
+
+function abrirModal()  { document.getElementById('resetModal').style.display = 'flex'; }
+function cerrarModal() { document.getElementById('resetModal').style.display = 'none'; }
+
+function ejecutarReset() {
+    cerrarModal();
+    document.getElementById('wifiPass').value = '';
+    selSsid = null;
+    manualMode = false;
+    document.getElementById('manualWrap').style.display = 'none';
+    document.getElementById('netList').style.display    = 'flex';
+    document.getElementById('manualToggle').textContent = 'Introducir SSID manualmente';
+    document.getElementById('btnContinuar1').disabled   = true;
+    document.getElementById('nfcRst').value = '';
+    document.getElementById('nfcSs').value = '';
+    document.getElementById('trigPin').value = '';
+    document.getElementById('echoPin').value = '';
+    document.getElementById('dhtPin').value = '';
+    document.getElementById('webUser').value = '';
+    document.getElementById('webPass').value = '';
+    setStep(0);
+    lucide.createIcons();
+    fetch('/api/wifi/reset', {method: 'POST'}).catch(function() {});
+}
+
+
+</script>
+</body>
+</html>
+)rawliteral";
