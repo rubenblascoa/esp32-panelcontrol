@@ -78,18 +78,18 @@ The firmware implements a strict separation of concerns between hardware and sof
 * **`tareas.h` / `tareas.cpp`**
   * **Purpose:** Controls the hardware-distributed infinite processing loops replacing the default Arduino execution flow.
   * **Detailed logic:**
-    * **`taskCore0`:** Manages network interfaces and local storage. It handles raw async WebSocket inputs, executes background OTA flashes, throttles NTP syncing, and triggers a periodic file cronjob every 2 hours to back up historical system state logs.
-    * **`taskCore1`:** Dedicated entirely to physical hardware operations. It evaluates input console command queues (`cmdQueue`), refreshes the 5-page diagnostic LCD using safe thread guards, and steps through the running states of the active background sensors.
+    * **`taskCore0`:** Manages network interfaces and local storage. It handles raw async WebSocket inputs, executes background OTA flashes, throttles NTP syncing, triggers a periodic file cronjob every 2 hours to back up historical system state logs, and operates the Cloudflare Tunnel WebSocket client — including HMAC-SHA256 request verification and forwarding console output as JSON `ws_fwd` messages to connected browsers.
+    * **`taskCore1`:** Dedicated entirely to physical hardware operations. It evaluates input console command queues (`cmdQueue`), refreshes the 5-page diagnostic LCD using safe thread guards, steps through the running states of the active background sensors via the module registry, and automatically reinitializes hardware peripherals (NFC, DHT11, HC-SR04) after repeated consecutive failures.
 
 ### 4. Graphical Interface and Frontend
-* **`web_pages.h` / `web_pages.cpp`**
+* **`web_pages.h` / `web_pages.cpp`** + **`pages/`**
   * **Purpose:** Stores the unalterable HTML, CSS, and modern JavaScript structures for the remote administration dashboards.
-  * **Detailed logic:** Uses the `PROGMEM` keyword to lock the massive web layouts (Dashboard, DB Viewer, Config Panel, Captive Portal, and Login screens) into the Flash memory space. This prevents the assets from polluting the dynamic RAM Heap, completely removing memory-exhaustion reboots during simultaneous client attachments.
+  * **Detailed logic:** Uses the `PROGMEM` keyword to lock the massive web layouts (Dashboard, DB Viewer, Config Panel, Captive Portal, Login, and public Landing screens) into the Flash memory space. This prevents the assets from polluting the dynamic RAM Heap, completely removing memory-exhaustion reboots during simultaneous client attachments. Each page is maintained as an individual `pages/page_*.h` header included by `web_pages.cpp`, keeping individual page files manageable in size.
 
 ### 5. Routing and Network Security
 * **`web_server.h` / `web_server.cpp`**
   * **Purpose:** Handles async network routing and incoming server sockets on Core 0.
-  * **Detailed logic:** Provisions a complete REST API engine exposing 19 operational endpoints. Validates request authenticity by verifying the `ZENITH_SESSION` cookie against the dynamic token in RAM. WebSocket inputs are processed using safe memory allocations (`malloc/memcpy`), shielding the system against frame-based heap corruption, and endpoints like `/api/config/pins` handle live JSON data streams to map internal hardware states on the fly.
+  * **Detailed logic:** Provisions a complete REST API engine exposing 22 operational endpoints. Validates request authenticity by verifying the `ZENITH_SESSION` cookie against the dynamic token in RAM. WebSocket inputs are processed using safe memory allocations (`malloc/memcpy`), shielding the system against frame-based heap corruption, and endpoints like `/api/config/pins` handle live JSON data streams to map internal hardware states on the fly.
 
 ### 6. Sensor Controllers (Hardware)
 * **`nfc.h` / `nfc.cpp`**
@@ -105,7 +105,7 @@ The firmware implements a strict separation of concerns between hardware and sof
 ### 7. Utilities and Disk Logs
 * **`utils.h` / `utils.cpp`**
   * **Purpose:** Backend helper framework for mathematical smoothing, persistent storage, and physical bus routing.
-  * **Detailed logic:** Computes actual core stress profiles using an Exponential Moving Average algorithm (EMA 30/70) to screen out momentary spikes. Manages 3 separate persistent NVS spaces (`zenithmc`, `hwconfig`, `webcred`) to protect underlying peripheral mappings from accidental Wi-Fi wipes. Uses an explicit Mutex semaphore (`i2cMutex`) to coordinate shared I2C traffic on the LCD display while rolling across 5 distinct telemetry screens.
+  * **Detailed logic:** Computes actual core stress profiles using an Exponential Moving Average algorithm (EMA 30/70) to screen out momentary spikes. Manages 4 separate persistent NVS spaces (`zenithmc`, `hwconfig`, `webcred`, `aikey`) to protect underlying peripheral mappings, web credentials, Wi-Fi settings, and the Gemini API key from accidental wipes. Uses an explicit Mutex semaphore (`i2cMutex`) to coordinate shared I2C traffic on the LCD display while rolling across 5 distinct telemetry screens.
 * **`sd_card.h` / `sd_card.cpp`** *(Optional)*
   * **Purpose:** Interconnects a physical MicroSD card expansion slot over a dedicated SPI bus.
   * **Detailed logic:** Safeguarded under the preprocessor compilation guard `#ifdef SD_CS_PIN`. When present, it automatically intercepts database logging tasks from internal storage and streams the output directly onto physical disk media.
@@ -114,6 +114,14 @@ The firmware implements a strict separation of concerns between hardware and sof
 * **`menus.h` / `menus.cpp`**
   * **Purpose:** Visual framework and action parsing logic for the text-based console interface.
   * **Detailed logic:** Employs the `TerminalHibrida` buffering layout to package complex telemetry arrays (Uptime, Core stress, Heap space) before blasting them onto the network fabric, cutting down TCP packet pollution. Changes the running index `programaActivo` to redirect execution states.
+* **`terminal.h` / `terminal.cpp`**
+  * **Purpose:** Singleton hybrid output terminal that routes console output through both Telnet and WebSocket simultaneously.
+  * **Detailed logic:** `TerminalHibrida` extends Arduino's `Print` class, making it a drop-in replacement for `Serial`. Uses a buffered block mode (`iniciarBloque()` / `enviarBloque()`) with an anti-OOM safeguard that flushes automatically at 200 characters. A race-safe `_flushBuffer()` copies the buffer locally before clearing it, preventing data corruption during concurrent WebSocket JSON serialization on both cores.
+
+### 9. Module Registry
+* **`modules.h`**
+  * **Purpose:** Defines the `Modulo` struct that powers the extensible module dispatch system.
+  * **Detailed logic:** Each hardware module (NFC, Ultrasonic, DHT11) exposes a `const Modulo` instance with `nombre`, `entrada()`, `loop()`, and `icono` function pointers. `taskCore1` iterates the `modulos[]` array to dispatch execution instead of using a brittle `if/else if` FSM, meaning new modules can be added without touching the task scheduler.
 
 ---
 
@@ -125,7 +133,12 @@ The firmware implements a strict separation of concerns between hardware and sof
   * Dynamic RAM/PSRAM boundaries (Total, Allocated, Free).
   * Local File Storage map occupancy (LittleFS / SD Card).
   * True multi-core mathematical processor loads and silicon temperature profiles.
-* **NTP Time-Backed Database:** Fully automated background logging routines. Once synced to atomic network clocks, the firmware appends a structured 10-column telemetry line into the system CSV spreadsheet every 2 hours continuously.
+* **NTP Time-Backed Database:** Fully automated background logging routines. Once synced to atomic network clocks, the firmware appends a structured 11-column telemetry line into the system CSV spreadsheet every 2 hours continuously.
+* **Blasco AI:** Gemini-powered chat assistant embedded in the web dashboard as a sidebar panel. Supports streaming responses, file attachments, and receives live telemetry data as context. The Gemini API key is stored securely in NVS on the ESP32 and never exposed to the browser.
+* **Cloudflare Tunnel:** A Cloudflare Worker + Durable Object relay bridges the ESP32 to any browser over the internet without requiring a public IP or port forwarding. The ESP32 connects to the Worker via WebSocket; browsers connect to the same Worker endpoint. All traffic is authenticated with HMAC-SHA256 signatures.
+* **Tiered Security System:** Active monitoring of CPU temperature, ambient temperature (DHT11), processor load, RAM usage, and Wi-Fi signal strength across three alert levels (info / warning / critical). Alert causes are broadcast to all connected WebSocket clients in real time and logged as the 11th column of the telemetry CSV.
+* **Hardware Error Recovery:** Automatic hardware reinitialization for NFC, DHT11, and HC-SR04 after 3 consecutive sensor failures, with a 30-second cooldown between recovery attempts.
+* **OTA Updates (Over-The-Air):** Firmware can be flashed wirelessly over the local network, authenticated with the same web login password.
 
 ---
 
@@ -140,26 +153,39 @@ Developing and testing multiple hardware projects on a single microcontroller is
 | Basic monitoring via Serial | **Advanced telemetry** (RAM, Flash, Temp, CPU) |
 | Updates via cable | **OTA Support** (Over-The-Air) |
 | Coupled projects that break code | **Modular Architecture** (Independent "Drawers") |
+| No remote access outside LAN | **Cloudflare Tunnel** (internet access, no public IP needed) |
+| No AI assistance | **Blasco AI** (Gemini-powered assistant with live telemetry context) |
+| Silent hardware failures | **Auto hardware recovery** (NFC / DHT11 / HC-SR04 auto-reinit) |
 
 ---
 
 ## <picture><source media="(prefers-color-scheme: dark)" srcset="https://api.iconify.design/lucide:blocks.svg?color=white"><img src="https://api.iconify.design/lucide:blocks.svg?color=black" width="26" align="center"></picture> Active Modules
 
-Currently, the operating system has three main integrated projects:
+Currently, the operating system has three main integrated hardware projects, plus two system-level modules:
 
 ### 1. NFC Cloning Station Pro (V14)
 An advanced RFID auditing and cloning module using **MFRC522** hardware.
-* **Deep Reading:** Extracts all information from the card and saves it into the ESP32 RAM.
-* **Physical Cloning:** Allows injecting data into Sector 0 of rewritable magic cards (CUID/FUID).
+* **Deep Reading:** Performs a full 64-block dump (16 sectors × 4 blocks, 1KB) of MIFARE Classic 1K cards. Tries a built-in dictionary of 20 common keys per sector; successful keys are cached per sector to accelerate subsequent write operations.
+* **Physical Cloning:** Injects the full card dump into Sector 0 of rewritable magic cards (CUID/FUID), including Block 0 UID rewrite. Supports automatic hardware reinitialization after 3 consecutive SPI failures.
 
 ### 2. Ultrasonic Radar (V3)
 Physical telemetry module using the **HC-SR04** distance sensor.
-* **Asynchronous Execution (ISR):** 100% Non-blocking flow driven by hardware interrupts; the ESP32 suffers zero micro-freezes while the sound bounces.
-* **Loop Reading:** Configurable cyclical refresh with thermal fault tolerance ("Out of range").
+* **Asynchronous Execution (ISR):** 100% Non-blocking flow driven by hardware interrupts via a 3-state FSM (IDLE / WAITING / ECHO); the ESP32 suffers zero micro-freezes while the sound bounces. Returns -1 while waiting, -2 on timeout, or distance in cm on success.
+* **Loop Reading:** Configurable cyclical refresh (minimum 200ms between triggers) with thermal fault tolerance ("Out of range") and automatic hardware recovery.
 
 ### 3. Ambient Temperature and Humidity Monitor (V1)
 Integrated local climate data acquisition module via **DHT11**.
-* **Native 1-Wire Protocol:** Low-level reading (Bit-Banging) that relies on no third-party libraries, optimized with hardware delays and auto-recovery routines against electromagnetic noise.
+* **Native 1-Wire Protocol:** Low-level reading (Bit-Banging) that relies on no third-party libraries, optimized with hardware delays, interrupt isolation (`noInterrupts()`), and auto-recovery routines. Features 3-retry logic with 500ms spacing and silent error debouncing — only alerts after more than 5 minutes of consecutive failures.
+
+### 4. Blasco AI (Sidebar Assistant)
+Gemini-powered conversational AI embedded in the web dashboard.
+* **Streaming SSE:** Real-time response streaming directly in the browser. Supports `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash/pro`, and `gemini-2.0-flash-lite`.
+* **Live Context:** Each conversation includes live telemetry (CPU, RAM, temperature, uptime) and the full project `.readmeAI` context, served from the ESP32 itself at `/.readmeAI`. File attachments (images and text) are supported.
+
+### 5. Cloudflare Tunnel (Remote Access Layer)
+Bidirectional internet relay between ESP32 and browsers, without a public IP.
+* **Architecture:** A Cloudflare Worker with a Durable Object (`TunnelSession`) acts as the relay. The ESP32 connects via WebSocket (`/esp-tunnel`) authenticated with a shared token. Browsers connect via WebSocket (`/ws`) and HTTP to the same Worker endpoint.
+* **Security:** All HTTP requests proxied through the tunnel are signed with HMAC-SHA256 (`x-zenith-sig` + `x-zenith-time`) using mbedTLS on the ESP32, verified against a 30-second replay window.
 
 ---
 
@@ -168,19 +194,20 @@ Integrated local climate data acquisition module via **DHT11**.
 * **Base Board:** ESP32 (S3 N16R8 or similar).
 * **NFC Module:** MFRC522 RFID Reader (SPI Bus).
 * **Distance Module:** HC-SR04 Sensor.
-* **Climate Sensor:** DHT11 Module (with 4.7kΩ pull-up resistor).
-* **Storage Module (Optional):** MicroSD Reader (SPI Bus).
+* **Climate Sensor:** DHT11 Module (with 4.7kΩ pull-up resistor recommended; internal INPUT_PULLUP used as fallback).
+* **Storage Module (Optional):** MicroSD Reader (SPI Bus, `#ifdef SD_CS_PIN`).
 
-> *Note: The system boots with default pins, but all hardware connections (RST, SS, TRIG, ECHO, DHT) can be completely reassigned from the Web Captive Portal without touching the code.*
+> *Note: The system boots with default pins, but all hardware connections (RST, SS, TRIG, ECHO, DHT) can be completely reassigned from the Web Captive Portal or the `/config` web panel without touching the code. For internet access beyond the local network, a Cloudflare Worker deployment is required (see `worker/` folder).*
 
 ### Initial Deployment (Via Captive Portal):
 1. Flash the compiled source code via USB for the first time using your preferred IDE.
 2. The ESP32 will format its internal filesystem (LittleFS) and, upon not detecting valid home credentials, will open an Access Point (AP).
 3. Search on your phone or PC for the open Wi-Fi network: **`Esp32BlascoOS_Setup`** and connect to it.
-4. A web wizard will open automatically. Follow the steps to enter your local router password, configure your GPIO pins, and define your web admin credentials.
+4. A web wizard will open automatically (Screen C). Optionally configure your GPIO pins and web admin credentials on this first screen, then proceed to enter your local router password.
 5. Upon clicking Save, the ESP32 will reboot, shut down AP mode, and connect to your home router transparently.
 6. Open the Serial console at `115200 baud` or check the LCD screen to discover its newly assigned local IP.
-7. Open that IP in your web browser. Enjoy the environment!
+7. Open that IP in your web browser — you will land on the public landing page. Log in to access the full dashboard.
+8. *(Optional)* To enable remote access over the internet, deploy the Cloudflare Worker in the `worker/` folder using Wrangler and configure the tunnel token via `/config`.
 
 ---
 
